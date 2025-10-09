@@ -29,7 +29,7 @@ TECHNOLOGY_SIGNATURES = {
 # --- Gemini API Konfiguration ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-1.5-pro-latest')
 except KeyError:
     st.error("Der GEMINI_API_KEY ist in den Streamlit Secrets nicht hinterlegt. Bitte fügen Sie ihn hinzu.")
     st.stop()
