@@ -169,7 +169,7 @@ Präsentiere in diesem Abschnitt die gefundenen Tools. Wenn keine Tools in einer
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         return response.text
     except (KeyError, FileNotFoundError):
