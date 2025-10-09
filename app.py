@@ -2,144 +2,253 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-import pyperclip
+import json
+import re
+from urllib.parse import urljoin, urlparse
 
-# --- Konfiguration ---
+# --- Konstanten und Konfiguration ---
+
+# TECHNOLOGY_SIGNATURES: Ein Dictionary zur Erkennung von Web-Technologien.
 TECHNOLOGY_SIGNATURES = {
     # Analytics & Tracking
-    "Google Analytics 4": ["G-"], "Google Analytics (Universal)": ["UA-"], "Adobe Analytics": ["s_code.js", "AppMeasurement.js"], "Matomo / Piwik": ["_paq.push"],
+    "Google Analytics 4": {"signatures": ["G-"], "confidence": "high"},
+    "Google Analytics (Universal)": {"signatures": ["UA-"], "confidence": "high"},
+    "Adobe Analytics": {"signatures": ["s_code.js", "AppMeasurement.js"], "confidence": "high"},
     # Advertising & Retargeting
-    "Google Ads": ["AW-", "google_ad_conversion_id"], "Google Marketing Platform (Floodlight)": ["fls.doubleclick.net"], "Meta Pixel": ["fbq('init'"], "LinkedIn Insight Tag": ["linkedin_data_partner_id"], "TikTok Pixel": ["ttq('init'"], "Criteo": ["static.criteo.net"], "AdRoll": ["adroll_adv_id"], "Taboola": ["trc.taboola.com"],
-    # DSPs (Demand-Side Platforms)
-    "The Trade Desk": ["insight.adsrvr.org"], "Xandr (AppNexus)": ["anj.adnxs.com"], "MediaMath": ["mathads.com"],
+    "Google Ads": {"signatures": ["AW-", "google_ad_conversion_id"], "confidence": "high"},
+    "Meta Pixel": {"signatures": ["fbq('init'"], "confidence": "high"},
+    "LinkedIn Insight Tag": {"signatures": ["linkedin_data_partner_id"], "confidence": "high"},
     # Customer Experience & CRO
-    "Hotjar": ["hj('event'"], "Optimizely": ["optimizely.com/js"], "VWO": ["dev.vwo.com"],
+    "Hotjar": {"signatures": ["hj('event'"], "confidence": "high"},
+    "Optimizely": {"signatures": ["optimizely.com/js"], "confidence": "high"},
     # Marketing Automation & CRM
-    "HubSpot": ["js.hs-scripts.com", "_hsq.push"], "Salesforce Pardot": ["pi.pardot.com"], "Marketo": ["munchkin.js"],
+    "HubSpot": {"signatures": ["js.hs-scripts.com", "_hsq.push"], "confidence": "high"},
     # Consent Management Platforms (CMP)
-    "Cookiebot": ["consent.cookiebot.com"], "Usercentrics": ["app.usercentrics.eu"], "OneTrust": ["cdn.cookielaw.org"],
+    "Cookiebot": {"signatures": ["consent.cookiebot.com"], "confidence": "high"},
+    "Usercentrics": {"signatures": ["app.usercentrics.eu"], "confidence": "high"},
     # E-Commerce Platforms
-    "Shopify": ["Shopify.theme", "cdn.shopify.com"], "Magento": ["mage-init"], "WooCommerce": ["/wp-content/plugins/woocommerce"],
-    # Cloud & Content Delivery
-    "Amazon Web Services (AWS)": ["amazonaws.com"], "Google Cloud Platform (GCP)": ["storage.googleapis.com"], "Cloudflare": ["cdn-cgi/scripts"], "Microsoft Azure": ["azureedge.net"],
-    # Customer Data Platforms (CDP)
-    "Segment": ["cdn.segment.com"], "Tealium": ["tags.tiqcdn.com"]
+    "Shopify": {"signatures": ["Shopify.theme", "cdn.shopify.com"], "confidence": "high"},
+    # Cloud & Content Delivery (Generic Signals)
+    "Amazon Web Services (AWS)": {"signatures": ["amazonaws.com"], "confidence": "medium"},
+    "Google Cloud Platform (GCP)": {"signatures": ["storage.googleapis.com"], "confidence": "medium"},
+    "Cloudflare": {"signatures": ["cdn-cgi/scripts"], "confidence": "medium"},
+    "Microsoft Azure": {"signatures": ["azureedge.net"], "confidence": "medium"}
 }
 
-# --- Gemini API Konfiguration ---
-try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-flash-latest')
-except KeyError:
-    st.error("Der GEMINI_API_KEY ist in den Streamlit Secrets nicht hinterlegt. Bitte fügen Sie ihn hinzu.")
-    st.stop()
-except Exception as e:
-    st.error(f"Fehler bei der Konfiguration der Gemini API: {e}")
-    st.stop()
+# --- Python-Logik: Backend-Funktionen ---
 
-# --- Funktionen ---
-
-def analyze_website_technologies(url):
-    """Analysiert die Webseite und gtm.js-Skripte nach Technologiesignaturen."""
-    found_technologies = set()
+def analyze_technologies(url: str) -> list[dict]:
+    """
+    Analysiert die gtm.js-Datei einer Webseite, um verwendete Technologien zu identifizieren.
+    """
+    found_technologies = []
+    # Extrahiert den Domainnamen für die gtm.js URL
+    domain = urlparse(url).netloc
+    gtm_url = f"https://www.googletagmanager.com/gtm.js?id={domain}"
+    
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()  # Hebt HTTPError für schlechte Antworten (4xx oder 5xx)
-
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Durchsuche den HTML-Inhalt und alle Skripte
-        all_text = response.text
-        script_tags = soup.find_all('script')
-        for script in script_tags:
-            if script.string:
-                all_text += script.string
-            if script.get('src'):
-                script_url = script.get('src')
-                # Überprüfe gtm.js direkt
-                if 'gtm.js' in script_url:
-                    try:
-                        gtm_response = requests.get(script_url, headers=headers, timeout=5)
-                        gtm_response.raise_for_status()
-                        all_text += gtm_response.text
-                    except requests.exceptions.RequestException as e:
-                        st.warning(f"Konnte gtm.js unter {script_url} nicht abrufen: {e}")
-
-        # Überprüfe alle Signaturen
-        for tech_name, signatures in TECHNOLOGY_SIGNATURES.items():
-            for signature in signatures:
-                if signature in all_text:
-                    found_technologies.add(tech_name)
-                    break # Eine Signatur reicht aus, um die Technologie zu erkennen
-
-    except requests.exceptions.MissingSchema:
-        st.error("Ungültige URL. Bitte stellen Sie sicher, dass die URL mit 'http://' oder 'https://' beginnt.")
-        return None
-    except requests.exceptions.ConnectionError:
-        st.error("Verbindungsfehler. Die Webseite ist möglicherweise nicht erreichbar oder die URL ist falsch.")
-        return None
-    except requests.exceptions.Timeout:
-        st.error("Zeitüberschreitung beim Verbindungsaufbau zur Webseite. Bitte versuchen Sie es später erneut.")
-        return None
+        response = requests.get(gtm_url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+        if response.status_code == 200:
+            content = response.text
+            for tech_name, data in TECHNOLOGY_SIGNATURES.items():
+                for signature in data["signatures"]:
+                    if signature in content:
+                        found_technologies.append({"name": tech_name, "confidence": data["confidence"]})
+                        break
     except requests.exceptions.RequestException as e:
-        st.error(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
-        return None
-    return sorted(list(found_technologies))
+        st.warning(f"Technologie-Analyse (gtm.js) konnte nicht durchgeführt werden: {e}. Bericht wird ohne diese Daten erstellt.")
+    return found_technologies
 
-def get_gemini_strategic_assessment(technologies):
-    """Ruft die Google Gemini API auf, um eine strategische Einschätzung zu erhalten."""
-    if not technologies:
-        return "Keine Technologien zur Analyse gefunden."
+def scrape_website_text(base_url: str) -> str:
+    """
+    Sammelt den Text von der Startseite und relevanten Unterseiten einer Webseite.
+    Ignoriert Seiten, die nicht gefunden werden (404-Fehler).
+    """
+    # Liste gängiger Unterseiten-Pfade für eine umfassende Analyse
+    subpage_paths = [
+        '/',  # Startseite explizit als erstes
+        '/ueber-uns', '/about', '/about-us', '/company', '/unternehmen',
+        '/services', '/leistungen', '/produkte', '/products',
+        '/karriere', '/jobs', '/career'
+    ]
+    
+    total_text = ""
+    processed_urls = set()
+    
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'}
 
-    tech_list_str = ", ".join(technologies)
-    prompt = f"Du bist ein erfahrener Digital-Stratege. Basierend auf dieser Liste von erkannten Technologien: [{tech_list_str}], erstelle eine prägnante Analyse. Gliedere deine Antwort in drei Bereiche mit den Überschriften: **Stärken:** (1-2 Stichpunkte), **Schwächen:** (1-2 Stichpunkte) und **Größte Chance:** (ein konkreter Vorschlag)."
+    for path in subpage_paths:
+        # Konstruiert die vollständige URL für jede Unterseite
+        url_to_scrape = urljoin(base_url, path)
+        
+        if url_to_scrape in processed_urls:
+            continue
+            
+        try:
+            response = requests.get(url_to_scrape, timeout=10, headers=headers)
+            # Fährt nur fort, wenn die Seite erfolgreich geladen wurde (Status 200)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                for script_or_style in soup(["script", "style", "nav", "footer"]):
+                    script_or_style.decompose()
 
+                text = soup.get_text(separator=' ', strip=True)
+                total_text += f"\n\n--- Inhalt von {url_to_scrape} ---\n\n{text}"
+                processed_urls.add(url_to_scrape)
+
+        except requests.exceptions.RequestException:
+            # Ignoriert Fehler (z.B. 404, Timeout) und macht mit der nächsten Seite weiter
+            continue
+            
+    if not total_text:
+        st.error(f"Fehler: Konnte keinen Text von der Webseite {base_url} extrahieren. Bitte prüfen Sie die URL und versuchen Sie es erneut.")
+
+    return total_text.strip()
+
+def generate_report(technologies: list, website_text: str) -> str:
+    """
+    Generiert den vollständigen Analysebericht mit der Google Gemini API.
+    """
+    # Der aktualisierte, umfassende Prompt für die KI
+    prompt = f"""
+Du bist ein Senior Business Analyst und Digital-Stratege bei einem führenden Google Partner. Du erhältst zwei Arten von Daten über ein Unternehmen:
+1. Eine Liste von erkannten Technologien auf seiner Webseite.
+2. Den gesammelten Textinhalt von der Startseite und wichtigen Unterseiten (wie 'Über uns', 'Leistungen', 'Karriere').
+
+Erkannte Technologien: {json.dumps(technologies, indent=2)}
+Webseiten-Inhalt: ```{website_text[:25000]}```
+
+Deine Aufgabe: Erstelle einen vollständigen, tiefgehenden Analysebericht. Formatiere alles professionell in Markdown.
+
+# Digital Maturity & Strategy Audit
+
+---
+
+## Teil 1: Firmenprofil (basierend auf dem Webseiten-Inhalt)
+- **Unternehmen:** [Leite den Firmennamen aus dem Inhalt ab]
+- **Kernbotschaft:** [Fasse die Hauptbotschaft oder den Slogan der Webseite in einem Satz zusammen]
+- **Tätigkeit & Branche:** [Beschreibe in 2-3 Sätzen detailliert, was die Firma macht und in welcher Branche sie tätig ist, basierend auf dem gesamten Text]
+- **Zielgruppe:** [Leite aus der Sprache und den Angeboten ab, wer die typischen Kunden sind (z.B. B2B, B2C, kleine Unternehmen, Konzerne)]
+
+---
+
+## Teil 2: Digital Maturity Audit (basierend auf den erkannten Technologien)
+**Gesamteinschätzung:**
+- **Digital Maturity Score (1-10):** [Bewerte die digitale Reife auf einer Skala von 1 bis 10 und begründe kurz.]
+- **Zusammenfassung:** [Gib eine prägnante Zusammenfassung der digitalen Aufstellung des Unternehmens.]
+
+### Kategorie-Analyse
+Präsentiere in diesem Abschnitt die gefundenen Tools. Wenn keine Tools in einer Kategorie gefunden wurden, identifiziere dies als Lücke.
+
+- **Data & Analytics**
+  - **Gefundene Tools:** [Liste hier die Tools aus den Kategorien 'Analytics & Tracking' und 'Consent Management Platforms'. Verwende 🟢 für 'high' und 🟡 für 'medium' Konfidenz. Bei keinen Tools: "🔴 Lücke: Keine spezialisierten Analytics- oder CMP-Tools erkannt."]
+  - **Reifegrad (1-5):** [Bewerte die Reife in diesem Bereich von 1-5 und begründe.]
+
+- **Advertising & Performance Marketing**
+  - **Gefundene Tools:** [Liste hier die Tools aus der Kategorie 'Advertising & Retargeting'. Verwende 🟢 für 'high' und 🟡 für 'medium' Konfidenz. Bei keinen Tools: "🔴 Lücke: Keine Performance-Marketing-Pixel oder -Tags implementiert."]
+  - **Reifegrad (1-5):** [Bewerte die Reife in diesem Bereich von 1-5 und begründe.]
+
+- **Customer Experience & Personalisierung**
+  - **Gefundene Tools:** [Liste hier die Tools aus den Kategorien 'Customer Experience & CRO', 'Marketing Automation & CRM'. Verwende 🟢 für 'high' und 🟡 für 'medium' Konfidenz. Bei keinen Tools: "🔴 Lücke: Keine Tools zur Optimierung der Nutzererfahrung oder zur Marketing-Automatisierung gefunden."]
+  - **Reifegrad (1-5):** [Bewerte die Reife in diesem Bereich von 1-5 und begründe.]
+
+### Strategische Auswertung für das Kundengespräch
+- **Stärken:**
+  - [Punkt 1: Was macht das Unternehmen technologisch bereits gut?]
+  - [Punkt 2: Gibt es weitere positive Aspekte?]
+
+- **Schwächen & Potenziale:**
+  - [Punkt 1: Wo liegen die größten technologischen Lücken oder ungenutzten Potenziale?]
+  - [Punkt 2: Gibt es weitere Schwachstellen?]
+
+- **Top-Empfehlung (als Google Partner):**
+  - **Beobachtung:** [Beschreibe eine konkrete, faktenbasierte Beobachtung.]
+  - **Bedeutung:** [Erkläre, warum diese Beobachtung für das Geschäft des Kunden relevant ist.]
+  - **Empfehlung:** [Gib eine klare, umsetzbare Handlungsempfehlung, die idealerweise auf Google-Technologien (z.B. Google Analytics 4, Google Ads) aufbaut.]
+"""
     try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = model.generate_content(prompt)
         return response.text
+    except (KeyError, FileNotFoundError):
+        st.error("GEMINI_API_KEY nicht in den Streamlit Secrets gefunden.")
+        return None
     except Exception as e:
-        st.error(f"Fehler beim Aufruf der Gemini API: {e}")
-        return "Die KI-Auswertung konnte nicht generiert werden."
+        st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
+        return None
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Digital Infrastructure Analyzer", layout="wide")
 
-st.title("Digital Infrastructure Analyzer")
+# --- Streamlit Benutzeroberfläche ---
 
-website_url = st.text_input("Geben Sie eine Website-URL ein (z.B. https://www.example.com):", "https://www.google.com")
+st.set_page_config(page_title="Firmen-Tiefenanalyse", page_icon="📈")
 
-if st.button("Analysieren"):
-    if not website_url:
-        st.warning("Bitte geben Sie eine Website-URL ein.")
+st.title("📈 Firmen-Tiefenanalyse Pro")
+st.markdown("Geben Sie eine URL ein, um eine tiefgehende Analyse des Firmenprofils und der digitalen Reife zu erhalten.")
+
+# Session State Initialisierung
+if 'report' not in st.session_state:
+    st.session_state.report = ""
+if 'tech' not in st.session_state:
+    st.session_state.tech = []
+if 'text' not in st.session_state:
+    st.session_state.text = ""
+
+# Eingabefeld
+url = st.text_input(
+    "Geben Sie die vollständige URL der Webseite ein (z.B. `https://www.beispiel.de`)", 
+    key="url_input"
+)
+
+if st.button("Analyse starten", type="primary"):
+    if not url:
+        st.warning("Bitte geben Sie eine URL ein.")
     else:
-        with st.spinner("Analysiere Webseite und erstelle KI-Bewertung..."):
-            found_techs = analyze_website_technologies(website_url)
+        # Standardisiert die URL
+        if not re.match(r'http(s)?://', url):
+            url = 'https://' + url
+        
+        with st.spinner("Führe Tiefenanalyse durch... Lese mehrere Unterseiten und kontaktiere die KI..."):
+            # Beide Analysefunktionen aufrufen
+            st.session_state.tech = analyze_technologies(url)
+            st.session_state.text = scrape_website_text(url)
+            
+            # Bericht nur generieren, wenn Text extrahiert werden konnte
+            if st.session_state.text:
+                st.session_state.report = generate_report(st.session_state.tech, st.session_state.text)
+            else:
+                st.session_state.report = ""
 
-            if found_techs is not None:
-                st.subheader("KI-gestützte Strategische Einschätzung")
-                gemini_assessment = get_gemini_strategic_assessment(found_techs)
-                st.markdown(gemini_assessment)
+# --- Anzeige der Ergebnisse ---
 
-                st.markdown("---") # Trennlinie
+if st.session_state.report:
+    st.markdown("---")
+    st.subheader("Analysebericht")
+    st.markdown(st.session_state.report)
 
-                if st.checkbox("Details der erkannten Technologien anzeigen"):
-                    if found_techs:
-                        st.subheader("Erkannte Technologien:")
-                        for tech in found_techs:
-                            st.write(f"- {tech}")
-                    else:
-                        st.info("Es wurden keine spezifischen Technologien gefunden.")
+    st.markdown("---")
+    st.download_button(
+        label="📥 Bericht als Markdown herunterladen",
+        data=st.session_state.report,
+        file_name=f"analyse_{urlparse(url).netloc}.md",
+        mime="text/markdown",
+    )
 
-                # Button zum Kopieren der Analyse
-                if st.button("Analyse in Zwischenablage kopieren"):
-                    analysis_text = f"KI-gestützte Strategische Einschätzung für {website_url}:\n\n{gemini_assessment}"
-                    if found_techs:
-                        analysis_text += "\n\nErkannte Technologien:\n" + "\n".join([f"- {tech}" for tech in found_techs])
-                    
-                    try:
-                        pyperclip.copy(analysis_text)
-                        st.success("Analyse erfolgreich in die Zwischenablage kopiert!")
-                    except pyperclip.PyperclipException:
-                        st.warning("Konnte nicht automatisch in die Zwischenablage kopieren. Bitte kopieren Sie den Text manuell.")
-                        st.text_area("Manuell kopieren:", value=analysis_text, height=300)
+    if st.checkbox("🔍 Rohdaten der Analyse anzeigen"):
+        st.subheader("Erkannte Technologien")
+        if st.session_state.tech:
+            st.json(st.session_state.tech)
+        else:
+            st.info("Keine spezifischen Technologien über die gtm.js-Analyse gefunden.")
+
+        st.subheader("Extrahierter Webseiten-Text (von allen Unterseiten)")
+        st.text_area("Gesammelter Text", st.session_state.text, height=300)
+
+with st.expander("❓ Anleitung & Info"):
+    st.markdown("""
+    **Was ist neu in dieser Version?**
+    1.  **Multi-Seiten-Analyse:** Die App beschränkt sich nicht mehr auf die Startseite. Sie versucht aktiv, wichtige Unterseiten wie "Über uns", "Leistungen" und "Karriere" zu finden und deren Inhalte zu aggregieren.
+    2.  **Tiefgreifendes Firmenprofil:** Durch die Analyse mehrerer Seiten kann die KI ein wesentlich genaueres Bild von der Tätigkeit, Branche und Zielgruppe des Unternehmens zeichnen.
+    3.  **Download-Funktion:** Sie können den generierten Bericht direkt als Markdown-Datei herunterladen.
+    """)
