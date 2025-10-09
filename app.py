@@ -20,21 +20,24 @@ TECHNOLOGY_SIGNATURES = {
     "Meta Pixel": {"signatures": ["fbq('init'"], "confidence": "high"},
     "LinkedIn Insight Tag": {"signatures": ["linkedin_data_partner_id"], "confidence": "high"},
     "TikTok Pixel": {"signatures": ["tiktok-pc-analytics"], "confidence": "high"},
+    # DSP & Programmatic
+    "DoubleClick (Google Marketing Platform)": {"signatures": ["doubleclick.net"], "confidence": "medium"},
     # Customer Experience & Personalisierung
     "Hotjar": {"signatures": ["hj('event'"], "confidence": "high"},
     "Optimizely": {"signatures": ["optimizely.com/js"], "confidence": "high"},
     # Marketing Automation & CRM
     "HubSpot": {"signatures": ["js.hs-scripts.com", "_hsq.push"], "confidence": "high"},
     "Salesforce Pardot": {"signatures": ["pi.pardot.com"], "confidence": "high"},
-    # Consent Management Platforms (CMP)
-    "Cookiebot": {"signatures": ["consent.cookiebot.com"], "confidence": "high"},
-    "Usercentrics": {"signatures": ["app.usercentrics.eu"], "confidence": "high"},
+    # Cloud-Nutzung
+    "Amazon Web Services (AWS)": {"signatures": ["amazonaws.com"], "confidence": "medium"},
+    "Google Cloud Platform (GCP)": {"signatures": ["storage.googleapis.com"], "confidence": "medium"},
+    "Cloudflare": {"signatures": ["cdn-cgi/scripts"], "confidence": "medium"},
 }
 
 # Liste der zu suchenden Business-Events
 BUSINESS_EVENTS = ['purchase', 'add_to_cart', 'begin_checkout', 'form_submission', 'lead', 'sign_up']
 
-# --- Python-Logik: Backend-Funktionen ---
+# --- Python-Logik: Backend-Funktionen (unverändert) ---
 
 def analyze_infrastructure(url: str) -> dict:
     """
@@ -47,32 +50,35 @@ def analyze_infrastructure(url: str) -> dict:
         "tracked_events": []
     }
     domain = urlparse(url).netloc
-    gtm_url = f"https://www.googletagmanager.com/gtm.js?id={domain}"
+    # Wir versuchen es mit und ohne 'www', da die Konfiguration variieren kann
+    gtm_urls = [f"https://www.googletagmanager.com/gtm.js?id={domain}",
+                f"https://www.googletagmanager.com/gtm.js?id={domain.replace('www.','')}"
+               ]
+
+    gtm_content = None
     
-    try:
-        response = requests.get(gtm_url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-        
-        # Schritt 1: GTM-Check
-        if response.status_code == 200 and 'GTM-' in response.text:
-            results["has_gtm"] = True
-            gtm_content = response.text
-            
-            # Schritt 2: Tool-Analyse
-            for tech_name, data in TECHNOLOGY_SIGNATURES.items():
-                for signature in data["signatures"]:
-                    if signature in gtm_content:
-                        results["detected_tools"].append({"name": tech_name, "confidence": data["confidence"]})
-                        break
-            
-            # Schritt 3: Event-Analyse
-            for event in BUSINESS_EVENTS:
-                if f"'{event}'" in gtm_content or f'"{event}"' in gtm_content:
-                    results["tracked_events"].append(event)
-        
-    except requests.exceptions.RequestException:
-        # Fehler wird ignoriert, da das Fehlen von GTM ein Analyseergebnis ist.
-        pass
-        
+    for gtm_url in gtm_urls:
+        try:
+            response = requests.get(gtm_url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+            if response.status_code == 200 and 'GTM-' in response.text:
+                results["has_gtm"] = True
+                gtm_content = response.text
+                break
+        except requests.exceptions.RequestException:
+            continue
+    
+    if gtm_content:
+        # Tool-Analyse
+        for tech_name, data in TECHNOLOGY_SIGNATURES.items():
+            for signature in data["signatures"]:
+                if signature in gtm_content:
+                    results["detected_tools"].append({"name": tech_name, "confidence": data["confidence"]})
+                    break
+        # Event-Analyse
+        for event in BUSINESS_EVENTS:
+            if f"'{event}'" in gtm_content or f'"{event}"' in gtm_content:
+                results["tracked_events"].append(event)
+    
     return results
 
 def scrape_website_text(base_url: str) -> str:
@@ -82,7 +88,7 @@ def scrape_website_text(base_url: str) -> str:
     subpage_paths = [
         '/', '/ueber-uns', '/about', '/about-us', '/company', '/unternehmen',
         '/services', '/leistungen', '/produkte', '/products',
-        '/karriere', '/jobs', '/career', '/kontakt', '/contact'
+        '/karriere', 'jobs', '/contact', '/kontakt'
     ]
     total_text = ""
     processed_urls = set()
@@ -96,43 +102,45 @@ def scrape_website_text(base_url: str) -> str:
             response = requests.get(url_to_scrape, timeout=10, headers=headers)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
-                for element in soup(["script", "style", "nav", "footer", "header"]):
+                for element in soup(["script", "style", "nav", "footer", "header", "aside"]):
                     element.decompose()
                 text = soup.get_text(separator=' ', strip=True)
                 total_text += f"\n\n--- Inhalt von {url_to_scrape} ---\n\n{text}"
                 processed_urls.add(url_to_scrape)
         except requests.exceptions.RequestException:
             continue
-            
+    
     if not total_text:
         st.error(f"Fehler: Konnte keinen Text von der Webseite {base_url} extrahieren.")
     return total_text.strip()
 
-def generate_report(infra_data: dict, website_text: str) -> str:
+def generate_dossier(infra_data: dict, website_text: str) -> str:
     """
-    Generiert den forensischen Analysebericht mit der Google Gemini API.
+    Erstellt das strategische Dossier mit der Google Gemini API.
     """
-    # Beweismittel für den Prompt vorbereiten
-    gtm_status = "GTM gefunden" if infra_data["has_gtm"] else "Kein GTM gefunden"
+    # Alle Beweismittel in einem strukturierten Format zusammenfassen
+    evidence = {
+        "GTM-Status": "Google Tag Manager gefunden" if infra_data["has_gtm"] else "Kein Tag Management System gefunden",
+        "Erkannte Technologien": infra_data["detected_tools"],
+        "Verfolgte Kern-Events": infra_data["tracked_events"],
+        "Webseiten-Inhalt": website_text[:30000]
+    }
     
-    # Der finale, forensische KI-Befehl
+    # Der finale Prompt für die strategische Vorstands-Analyse
     prompt = f"""
-Du bist ein Senior Digital Forensics Analyst. Deine Aufgabe ist es, einen tiefgehenden Audit für unser Sales-Team zu erstellen, der auch für Laien verständlich ist. Du erhältst folgende Beweismittel:
+Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation und datengetriebene Geschäftsmodelle. Deine Aufgabe ist es, ein strategisches Dossier für eine Vorstandssitzung zu erstellen.
 
-Beweismittel 1 - GTM-Status: {gtm_status}
-Beweismittel 2 - Erkannte Technologien: {json.dumps(infra_data["detected_tools"])}
-Beweismittel 3 - Verfolgte Kern-Events: {json.dumps(infra_data["tracked_events"])}
-Beweismittel 4 - Webseiten-Inhalt: ```{website_text[:25000]}```
+Beweismittel: {json.dumps(evidence, indent=2)}
 
-Dein Auftrag: Erstelle einen forensischen Bericht. Gehe in deiner Analyse explizit auf die Kombination der gefundenen Technologien UND Events ein. Wenn kein GTM gefunden wurde, muss dies die zentrale Schwäche sein.
+Dein Auftrag: Erstelle ein strategisches Dossier. Sei präzise, direkt und begründe jeden Punkt mit klaren Geschäftsrisiken oder -chancen.
 
 **Berichtsstruktur (Markdown):**
 
-# Forensischer Digital-Audit
+# Strategisches Dossier: Digitale Positionierung
 
 ---
 
-## Teil 1: Firmenprofil
+## Teil 1: Firmenprofil & strategische Positionierung
 - **Unternehmen:** [Leite den Firmennamen aus dem Inhalt ab]
 - **Kernbotschaft:** [Fasse die Hauptbotschaft oder den Slogan der Webseite in einem Satz zusammen]
 - **Tätigkeit & Branche:** [Beschreibe in 2-3 Sätzen detailliert, was die Firma macht und in welcher Branche sie tätig ist]
@@ -141,70 +149,87 @@ Dein Auftrag: Erstelle einen forensischen Bericht. Gehe in deiner Analyse expliz
 ---
 
 ## Teil 2: Forensischer Digital-Audit
-**Gesamteinschätzung:**
-[Bewerte die digitale Reife von 1-10 und gib eine Zusammenfassung, die den GTM-Status und die Event-Analyse berücksichtigt.]
+**Gesamteinschätzung (Executive Summary):**
+[Bewerte die digitale Reife von 1-10 und formuliere eine prägnante Management-Zusammenfassung (3-4 Sätze) über die allgemeine Situation.]
 
-### Kategorie-Analyse
-Für jede der folgenden Kategorien: Liste zuerst die gefundenen Tools mit Konfidenz-Emoji (🟢/🟡). Liste danach explizit auf, welche wichtigen Tools aus dieser Kategorie NICHT gefunden wurden (🔴 Lücke).
+### Audit der Kernkompetenzen
+**Anweisung:** Bewerte JEDE der folgenden Kategorien.
 
-**1. Tag Management & Daten-Grundlage**
-- **Status:** [{ "🟢 Google Tag Manager aktiv" if infra_data["has_gtm"] else "🔴 Kein Tag Management System gefunden"}]
+**1. Daten-Grundlage & Tag Management**
+- **Status:** [{ "🟢 Google Tag Manager" if evidence["GTM-Status"] == "Google Tag Manager gefunden" else "🔴 Kritische Lücke: Kein TMS"}]
 
 **2. Data & Analytics**
-- **Gefundene Tools:** [Liste die gefundenen Analytics Tools. Wenn leer: "Keine"]
-- **Potenzielle Lücken:** [z.B. 🔴 Adobe Analytics, 🔴 Matomo]
+- **Gefundene Tools:** [Liste gefundene Tools. Wenn leer: "Keine"]
+- **Status & Implikation:** [Wenn keine Tools gefunden wurden, schreibe: "🔴 Lücke: Dem Unternehmen fehlt die grundlegendste Fähigkeit, das Nutzerverhalten zu analysieren. Entscheidungen werden 'blind' getroffen."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
 
-**3. Advertising & Performance Marketing**
-- **Gefundene Tools:** [Liste die gefundenen Advertising Tools. Wenn leer: "Keine"]
-- **Potenzielle Lücken:** [z.B. 🔴 LinkedIn Insight Tag, 🔴 TikTok Pixel]
+**3. Advertising & Kundengewinnung**
+- **Gefundene Tools:** [Liste gefundene Tools, z.B. 🟢 Meta Pixel, 🟡 Google Ads (ohne Events)]
+- **Status & Implikation:** [Wenn keine Tools/Events gefunden wurden, schreibe: "🔴 Lücke: Es gibt keine technische Grundlage, um den Erfolg von Werbeausgaben zu messen (ROAS). Investitionen sind nicht messbar."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
 
-**4. Marketing Automation & CRM**
-- **Gefundene Tools:** [Liste die gefundenen CRM/Automation Tools. Wenn leer: "Keine"]
-- **Potenzielle Lücken:** [z.B. 🔴 HubSpot, 🔴 Salesforce Pardot]
+**4. DSP & Programmatic**
+- **Gefundene Tools:** [Liste gefundene Tools]
+- **Status & Implikation:** [Wenn keine Tools gefunden wurden, schreibe: "⚪️ Unentwickelt: Keine Hinweise auf programmatische Werbung. Potenzial zur Skalierung der Reichweite bleibt ungenutzt."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
 
-**5. Customer Experience & Personalisierung**
-- **Gefundene Tools:** [Liste die gefundenen CX Tools. Wenn leer: "Keine"]
-- **Potenzielle Lücken:** [z.B. 🔴 Hotjar, 🔴 Optimizely]
+**5. Marketing Automation & CRM**
+- **Gefundene Tools:** [Liste gefundene Tools]
+- **Status & Implikation:** [Wenn keine Tools gefunden wurden, schreibe: "🔴 Lücke: Prozesse zur Lead-Pflege und Kundenbindung sind nicht automatisiert und skalierbar."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
+
+**6. Customer Experience & Personalisierung**
+- **Gefundene Tools:** [Liste gefundene Tools]
+- **Status & Implikation:** [Wenn keine Tools gefunden wurden, schreibe: "🔴 Lücke: Die Webseite bietet allen Nutzern die gleiche, statische Erfahrung. Individualisierung findet nicht statt."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
+
+**7. Cloud-Nutzung**
+- **Gefundene Tools:** [Liste gefundene Tools]
+- **Status & Implikation:** [Wenn keine Tools gefunden wurden, schreibe: "⚪️ Unklar: Keine spezifischen Cloud-Services identifiziert. Eine skalierbare, moderne IT-Infrastruktur ist nicht nachweisbar."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
 
 ---
 
-## Teil 3: Strategische Auswertung für das Kundengespräch
+## Teil 3: Strategische Auswertung & Handlungsbedarf
+**✅ Operative Stärken:**
+- **Stärke:** [Nenne die größte Stärke]
+- **Beobachtung:** [Der technische Fakt.]
+- **Strategische Implikation:** [Erkläre in 2-3 Sätzen die positive Auswirkung auf das Geschäft. Z.B.: "Durch den Einsatz von HubSpot besteht bereits eine zentrale Plattform für die Lead-Verwaltung, was eine skalierbare Vertriebs-Pipeline ermöglicht."]
 
-**✅ Stärken (Was gut läuft und warum):**
-- **Stärke 1:** [Nenne die größte Stärke, basierend auf den Beweisen.]
-- **Beweis:** [Nenne hier die konkreten Beweismittel. Z.B.: "Wir haben die Implementierung des Meta Pixels (🟢) in Kombination mit einem 'purchase'-Event nachgewiesen."]
-- **Bedeutung (Intern):** [Erkläre die strategische Bedeutung.]
-- **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+**⚠️ Strategische Risiken (Handlungsbedarf):**
+- **Risiko:** [Nenne die größte Schwäche]
+- **Beobachtung:** [Der technische Fakt oder die Lücke.]
+- **Konkretes Geschäftsrisiko:** [Erkläre in 2-3 Sätzen die negativen Auswirkungen auf das Geschäft. Z.B.: "Ohne serverseitiges Tracking wird der Datenverlust durch Ad-Blocker und Browser-Updates weiter zunehmen. Dies führt zu einer stetig sinkenden Effizienz der Werbeausgaben und dem Risiko, Marktanteile an Wettbewerber zu verlieren, die ihre Kunden besser verstehen."]
 
-**⚠️ Schwächen (Wo das größte Potenzial liegt):**
-- **Schwäche 1:** [Nenne die größte Schwäche, basierend auf den identifizierten Lücken und fehlenden Events.]
-- **Beweis:** [Nenne die Beweismittel. Z.B.: "Es wurde kein Google Tag Manager gefunden. Alle Skripte werden unstrukturiert geladen."]
-- **Bedeutung (Intern):** [Erkläre das Problem. Z.B.: "Komplett unflexibel, langsam, fehleranfällig. Keine Möglichkeit, schnell auf neue Marketing-Anforderungen zu reagieren."]
-- **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie. Z.B.: "Stellen Sie sich vor, die Elektrik in Ihrem Haus wäre ohne Sicherungskasten verlegt. Jedes Mal, wenn Sie eine neue Lampe anschließen wollen, müssen Sie die Wände aufreißen. Ein Tag Manager ist dieser fehlende, zentrale Sicherungskasten für Ihr digitales Marketing."]
+## Teil 4: Empfohlener Strategischer Fahrplan
+**💡 Quick Wins (Sofortmaßnahmen mit hohem ROI):**
+- [Liste hier 1-2 konkrete, schnell umsetzbare Maßnahmen auf, die einen sofortigen Mehrwert bringen. Z.B.: "Einrichtung eines Basis-Trackings mit GA4, um die wichtigsten 3-5 Nutzeraktionen auf der Webseite zu messen."]
 
-**🚀 Top-Empfehlung (Unser konkreter Vorschlag):**
-[Formuliere eine klare, umsetzbare Handlungsempfehlung, die direkt auf der größten Schwäche aufbaut und eine Lösung anbietet.]
+**🚀 Unser strategischer Vorschlag (Phasenplan):**
+- **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt, um die größte Lücke zu schließen. Z.B.: "Implementierung eines serverseitigen Google Tag Managers auf der Google Cloud zur Schaffung einer zukunftssicheren First-Party-Datenbasis."]
+- **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt, der auf Phase 1 aufbaut. Z.B.: "Anreicherung der gesammelten Daten in BigQuery und Aufbau von Dashboards zur Berechnung des echten Marketing-ROI."]
+- **Langfristige Vision:** [Beschreibe das Endziel in einem Satz. Z.B.: "Etablierung eines prädiktiven Analyse-Modells zur Vorhersage des Customer Lifetime Value und zur Automatisierung der Budget-Allokation."]
 """
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-flash-latest')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
         return None
 
-# --- Streamlit Benutzeroberfläche ---
+# --- Streamlit Benutzeroberfläche (unverändert) ---
 
-st.set_page_config(page_title="Digital Forensics Auditor", page_icon="🔬")
+st.set_page_config(page_title="Strategie-Dossier Generator", page_icon="📈")
 
-st.title("🔬 Digital Forensics Auditor")
-st.markdown("Führen Sie einen tiefgehenden Audit der digitalen Infrastruktur einer Webseite durch.")
+st.title("📈 Strategie-Dossier Generator")
+st.markdown("Erstellt eine tiefgehende, strategische Analyse der digitalen Aufstellung eines Unternehmens für das Management.")
 
 # Session State Initialisierung
-if 'report' not in st.session_state:
-    st.session_state.report = ""
+if 'dossier' not in st.session_state:
+    st.session_state.dossier = ""
 if 'infra' not in st.session_state:
     st.session_state.infra = {}
 if 'text' not in st.session_state:
@@ -213,49 +238,50 @@ if 'text' not in st.session_state:
 # Eingabefeld
 url = st.text_input("Geben Sie die vollständige URL der Webseite ein (z.B. `https://www.beispiel.de`)")
 
-if st.button("Forensischen Audit starten", type="primary"):
+if st.button("Strategisches Dossier erstellen", type="primary"):
     if not url:
         st.warning("Bitte geben Sie eine URL ein.")
     else:
         if not re.match(r'http(s)?://', url):
             url = 'https://' + url
         
-        with st.spinner("Führe forensische Analyse durch... Untersuche GTM, Events und Webinhalte..."):
+        with st.spinner("Erstelle Dossier... Führe Tiefenanalyse durch und bewerte strategische Implikationen..."):
             st.session_state.infra = analyze_infrastructure(url)
             st.session_state.text = scrape_website_text(url)
             
             if st.session_state.text:
-                st.session_state.report = generate_report(st.session_state.infra, st.session_state.text)
+                st.session_state.dossier = generate_dossier(st.session_state.infra, st.session_state.text)
             else:
-                st.session_state.report = ""
+                st.session_state.dossier = ""
 
 # --- Anzeige der Ergebnisse ---
 
-if st.session_state.report:
+if st.session_state.dossier:
     st.markdown("---")
-    st.subheader("Forensischer Analysebericht")
-    st.markdown(st.session_state.report)
+    st.subheader("Strategisches Dossier")
+    st.markdown(st.session_state.dossier)
 
     st.markdown("---")
     st.download_button(
-        label="📥 Bericht als Markdown herunterladen",
-        data=st.session_state.report,
-        file_name=f"forensischer_audit_{urlparse(url).netloc}.md",
+        label="📥 Dossier als Markdown herunterladen",
+        data=st.session_state.dossier,
+        file_name=f"strategie_dossier_{urlparse(url).netloc}.md",
         mime="text/markdown",
     )
 
-    if st.checkbox("🔍 Beweismittel anzeigen (Rohdaten)"):
+    if st.checkbox("🔍 Beweismittel anzeigen (technische Rohdaten)"):
         st.subheader("Infrastruktur-Analyse")
         st.json(st.session_state.infra)
 
         st.subheader("Extrahierter Webseiten-Text")
         st.text_area("Gesammelter Text", st.session_state.text, height=300)
 
-with st.expander("❓ Funktionsweise & Methodik"):
+with st.expander("❓ Methodik & Anwendungsfall"):
     st.markdown("""
-    **1. GTM-Verifizierung:** Die App prüft zunächst, ob ein Google Tag Manager (`GTM-XXXX`) auf der Seite aktiv ist. Dies ist die Grundlage für jede moderne, flexible Datenstrategie.
-    **2. Tool-Analyse:** Falls GTM vorhanden ist, wird der Code auf Signaturen bekannter Marketing-, Analytics- und CRM-Tools durchsucht.
-    **3. Event-Analyse:** Parallel dazu wird der GTM-Code auf die Konfiguration von wichtigen Geschäfts-Events (`purchase`, `lead` etc.) untersucht. Dies zeigt, ob das Unternehmen nicht nur Tools installiert hat, sondern auch aktiv Daten misst.
-    **4. Inhaltsanalyse:** Der Text von relevanten Unterseiten wird extrahiert, um die Geschäftsziele und die Zielgruppe des Unternehmens zu verstehen.
-    **5. KI-Synthese:** Alle gesammelten "Beweismittel" werden an die Gemini KI gesendet, die sie zu einem strategischen, leicht verständlichen Bericht für Vertriebsgespräche zusammenfügt.
+    **Anwendungsfall:** Dieses Tool dient der schnellen Erstellung einer fundierten, externen Analyse der digitalen Aufstellung eines Unternehmens (z.B. eines potenziellen Kunden, Partners oder Wettbewerbers). Das Ergebnis ist ein strategisches Dossier, das als Grundlage für Management-Diskussionen dient.
+
+    **Methodik:**
+    1.  **Forensische Analyse:** Die App untersucht die technische Infrastruktur der Webseite auf Schlüsseltechnologien (z.B. Analytics, CRM, Ad-Tech) und deren Konfiguration (Tag Management, Event-Tracking).
+    2.  **Inhalts-Analyse:** Parallel dazu wird der Inhalt der Webseite ausgelesen, um die strategische Ausrichtung (Branche, Zielgruppe, Wertversprechen) des Unternehmens zu verstehen.
+    3.  **Strategische Synthese durch KI:** Die gesammelten "Beweismittel" werden von einem Gemini-Sprachmodell analysiert, das darauf trainiert ist, wie ein Top-Management-Berater zu agieren. Es übersetzt die technischen Fakten in strategische Implikationen, bewertet Geschäftsrisiken und leitet einen konkreten Handlungsplan ab.
     """)
