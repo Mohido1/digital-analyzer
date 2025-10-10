@@ -141,7 +141,7 @@ Dein Auftrag: Erstelle einen strategischen Bericht basierend auf den Beweismitte
     prompt = prompt_template.format(evidence_json)
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
