@@ -344,7 +344,7 @@ try:
         return response.text
 except Exception as e:
         st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
-        return None
+return None
 
 # --- 3. STREAMLIT BENUTZEROBERFLÄCHE (FRONTEND) ---
 st.title("🚀 Digital Maturity & Strategy Analyzer")
