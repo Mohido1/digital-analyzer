@@ -338,13 +338,13 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
 * **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
 """
 prompt = prompt_template.format(evidence_json)
-try:
+  try:
         model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
-return response.text
-except Exception as e:
+        return response.text
+    except Exception as e:
         st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
-return None
+        return None
 
 # --- 3. STREAMLIT BENUTZEROBERFLÄCHE (FRONTEND) ---
 st.title("🚀 Digital Maturity & Strategy Analyzer")
