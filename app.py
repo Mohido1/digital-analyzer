@@ -161,4 +161,4 @@ if 'dossier' not in st.session_state: st.session_state.dossier = None
 if 'infra_data' not in st.session_state: st.session_state.infra_data = None
 
 if st.button("Analyse starten", type="primary"):
-    st.session
+    st.session_state
