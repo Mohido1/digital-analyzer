@@ -1,4 +1,3 @@
-from webtech import WebTech
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
@@ -241,19 +240,7 @@ def scrape_website_text(base_url: str):
     return total_text.strip() if total_text else "Es konnte kein relevanter Text von der Webseite extrahiert werden."
     
 @st.cache_data(ttl=600)
-def analyze_with_webtech(website_url: str):
-    """
-    Analysiert die Webseite mit der WebTech-Bibliothek.
-    """
-    try:
-        wt = WebTech()
-        results = wt.start_from_url(website_url, timeout=10)
-        # Extrahiere nur die Namen der gefundenen Technologien
-        tech_names = [tech['name'] for tech in results['tech']]
-        return tech_names
-    except Exception:
-        # Gib bei einem Fehler eine leere Liste zurück
-        return []
+
 def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
@@ -262,27 +249,13 @@ def generate_dossier(infra_data: dict, website_text: str, company_name: str):
         st.error("GEMINI_API_KEY nicht in den Streamlit Secrets gefunden.")
         return None
     
+    # Bereinigte Beweismittel ohne webtech
     evidence = {
         "Unternehmen": company_name,
         "Forensische Analyse": infra_data,
-        # LIMIT MASSIV ERHÖHT: Wir erlauben jetzt bis zu 200.000 Zeichen
-        "Webseiten-Inhalt": website_text[:200000]
+        "Webseiten-Inhalt": website_text[:15000]
     }
     evidence_json = json.dumps(evidence, indent=2, ensure_ascii=False)
-
-    prompt_template = """
-[Hier fügen Sie Ihren finalen, detaillierten KI-Prompt ("Vorstands-Analyse") ein]
-"""
-    
-    prompt = prompt_template.format(evidence_json)
-
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
-        return None
 
     prompt_template = """
 Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation und GMP.
@@ -375,18 +348,11 @@ if st.button("Analyse starten", type="primary"):
         st.error("Bitte geben Sie eine gültige, vollständige URL ein (z.B. https://www.beispiel.de).")
     else:
         infra_data_result = None
-        webtech_result = [] # Variable initialisieren
-
-        with st.spinner("Führe universelle forensische Analyse durch..."):
+        with st.spinner("Führe forensische Infrastruktur-Analyse durch..."):
             infra_data_result = analyze_infrastructure(url)
-            # Hier wird die neue Funktion aufgerufen
-            webtech_result = analyze_with_webtech(url) 
         
         if infra_data_result:
             st.session_state.infra_data = infra_data_result
-            # Die neuen Ergebnisse werden zu den Beweismitteln hinzugefügt
-            st.session_state.infra_data['allgemeine_technologien'] = webtech_result
-            
             with st.spinner("Extrahiere Webseiten-Inhalte und erstelle KI-Analyse..."):
                 extracted_info = tldextract.extract(url)
                 company_name = extracted_info.domain.capitalize()
