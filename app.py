@@ -12,23 +12,134 @@ import pyperclip
 st.set_page_config(page_title="Universal Forensic Auditor", page_icon="🌐", layout="wide")
 
 TECHNOLOGY_SIGNATURES = {
+    # Analytics & Tracking
     "Google Analytics 4": {"signatures": [r"G-[A-Z0-9]+"], "confidence": "high"},
     "Google Analytics (Universal)": {"signatures": [r"UA-\d+-\d+"], "confidence": "high"},
+    "Adobe Analytics": {"signatures": ["s_code.js", "AppMeasurement.js"], "confidence": "high"},
+    "Matomo / Piwik": {"signatures": ["matomo.js", "piwik.js", "_paq.push"], "confidence": "high"},
+    "Plausible Analytics": {"signatures": ["plausible.io/js/plausible.js"], "confidence": "high"},
+
+    # Advertising & Retargeting
     "Google Ads": {"signatures": [r"AW-\d+", r"google_ad_conversion_id"], "confidence": "high"},
+    "Google Marketing Platform (Floodlight)": {"signatures": ["fls.doubleclick.net", "doubleclick.net/activity"], "confidence": "high"},
     "Meta Pixel": {"signatures": [r"fbq\('init'"], "confidence": "high"},
     "LinkedIn Insight Tag": {"signatures": [r"linkedin_data_partner_id"], "confidence": "high"},
-    "Hotjar": {"signatures": [r"hj\('event'"], "confidence": "high"},
+    "Twitter Ads": {"signatures": [r"twq\('init'", "static.ads-twitter.com"], "confidence": "high"},
+    "Pinterest Tag": {"signatures": [r"pintrk\('init'"], "confidence": "high"},
+    "TikTok Pixel": {"signatures": ["tiktok-pc-analytics", r"ttq\('init'"], "confidence": "high"},
+    "Microsoft Advertising (Bing)": {"signatures": ["bat.bing.com"], "confidence": "high"},
+    "Criteo": {"signatures": ["criteo_id", "static.criteo.net"], "confidence": "high"},
+    "AdRoll": {"signatures": ["adroll_adv_id"], "confidence": "high"},
+    "Taboola": {"signatures": ["trc.taboola.com"], "confidence": "high"},
+    "Outbrain": {"signatures": ["outbrain.com/pixel"], "confidence": "high"},
+
+    # DSPs & Programmatic
+    "The Trade Desk": {"signatures": ["insight.adsrvr.org"], "confidence": "high"},
+    "Xandr (AppNexus)": {"signatures": ["anj.adnxs.com", "ib.adnxs.com"], "confidence": "high"},
+    "MediaMath": {"signatures": ["mathads.com"], "confidence": "high"},
+    "Adform": {"signatures": ["track.adform.net"], "confidence": "high"},
+
+    # Customer Experience & CRO
+    "Hotjar": {"signatures": [r"hj\('event'", "static.hotjar.com"], "confidence": "high"},
+    "Microsoft Clarity": {"signatures": ["clarity.ms"], "confidence": "high"},
+    "FullStory": {"signatures": ["fullstory.com/fs.js"], "confidence": "high"},
+    "Optimizely": {"signatures": ["optimizely.com/js"], "confidence": "high"},
+    "Visual Website Optimizer (VWO)": {"signatures": ["dev.vwo.com"], "confidence": "high"},
+    "Google Optimize": {"signatures": [r"GTM-[A-Z0-9]+", "optimize.js"], "confidence": "high"}, # Often linked to GTM
+
+    # Marketing Automation & CRM
     "HubSpot": {"signatures": [r"js\.hs-scripts\.com", r"_hsq\.push"], "confidence": "high"},
-    "Tealium": {"signatures": [r"tags\.tiqcdn\.com"], "confidence": "high"},
-    "Adobe Launch": {"signatures": [r"assets\.adobedtm\.com"], "confidence": "high"},
+    "Salesforce Pardot": {"signatures": ["pi.pardot.com"], "confidence": "high"},
+    "Marketo": {"signatures": ["munchkin.js", "Munchkin.init"], "confidence": "high"},
+    "ActiveCampaign": {"signatures": ["ac_track.js"], "confidence": "high"},
+    "Intercom": {"signatures": ["widget.intercom.io"], "confidence": "high"},
+
+    # Consent Management Platforms (CMP)
+    "Cookiebot": {"signatures": ["consent.cookiebot.com", "Cybot"], "confidence": "high"},
+    "Usercentrics": {"signatures": ["app.usercentrics.eu"], "confidence": "high"},
+    "OneTrust": {"signatures": ["cdn.cookielaw.org", "OneTrust.js"], "confidence": "high"},
+
+    # E-Commerce Platforms
+    "Shopify": {"signatures": ["Shopify.theme", "cdn.shopify.com"], "confidence": "high"},
+    "Magento": {"signatures": ["mage-init", "Magento_Theme"], "confidence": "high"},
+    "WooCommerce": {"signatures": ["/wp-content/plugins/woocommerce"], "confidence": "high"},
+
+    # Customer Data Platforms (CDP)
+    "Segment": {"signatures": ["cdn.segment.com"], "confidence": "high"},
+    # Tealium wird bereits durch den Tag Manager erkannt
+
+    # Cloud & Content Delivery (generische Signale)
+    "Amazon Web Services (AWS)": {"signatures": ["amazonaws.com"], "confidence": "medium"},
+    "Google Cloud Platform (GCP)": {"signatures": ["storage.googleapis.com"], "confidence": "medium"},
+    "Cloudflare": {"signatures": ["cdn-cgi/scripts"], "confidence": "medium"},
+    "Microsoft Azure": {"signatures": ["azureedge.net"], "confidence": "medium"},
 }
 TAG_MANAGERS = {
     "Google Tag Manager": r"googletagmanager\.com/gtm\.js",
     "Tealium": r"tags\.tiqcdn\.com",
-    "Adobe Launch": r"assets\.adobedtm\.com"
+    "Adobe Launch": r"assets\.adobedtm\.com",
+    "Ensighten": r"ensighten\.com",
+    "Segment": r"cdn\.segment\.com" # Segment kann auch als Tag Manager agieren
 }
-BUSINESS_EVENTS = ['purchase', 'add_to_cart', 'begin_checkout', 'form_submission', 'lead', 'sign_up']
+BUSINESS_EVENTS = [# Ersetzen Sie die alte BUSINESS_EVENTS-Liste hiermit
+BUSINESS_EVENTS = [
+    # --- E-Commerce & Retail ---
+    'purchase',
+    'add_to_cart',
+    'remove_from_cart',
+    'begin_checkout',
+    'add_payment_info',
+    'add_shipping_info',
+    'view_item',
+    'view_item_list',
+    'select_item',
+    'add_to_wishlist',
+    'view_cart',
+    'refund',
+    'view_promotion',
+    'select_promotion',
 
+    # --- Lead Generation & B2B ---
+    'generate_lead', # GA4 Standard
+    'form_submission',
+    'lead',
+    'sign_up',
+    'request_quote',
+    'schedule_demo',
+    'contact',
+    'trial_start',
+    'download',
+    'file_download',
+    'submit_form',
+
+    # --- SaaS & Subscription ---
+    'subscribe',
+    'unsubscribe',
+    'subscription_start',
+    'subscription_cancel',
+    'login',
+    'logout',
+    'upgrade_plan',
+    'downgrade_plan',
+    'feature_use',
+
+    # --- Allgemeines User Engagement ---
+    'search',
+    'share',
+    'click',
+    'view_search_results',
+    'video_start',
+    'video_progress',
+    'video_complete',
+    'scroll_depth',
+    'page_view', # Obwohl implizit, explizit suchen kann wertvoll sein
+
+    # --- Travel & Hospitality ---
+    'search_flight',
+    'search_hotel',
+    'select_room',
+    'book_trip',
+]
 # --- 2. KERNLOGIK-FUNKTIONEN (BACKEND) ---
 
 @st.cache_data(ttl=600)
