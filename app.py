@@ -1,3 +1,4 @@
+from Wappalyzer import Wappalyzer, WebPage
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
@@ -191,21 +192,68 @@ def analyze_infrastructure(website_url: str):
 
 @st.cache_data(ttl=600)
 def scrape_website_text(base_url: str):
-    subpage_paths = ['/', '/ueber-uns', '/about', '/services', '/leistungen', '/karriere', '/jobs']
-    total_text = ""
+    """
+    Sammelt intelligent Text von der Startseite und den wichtigsten verlinkten Unterseiten.
+    """
     headers = {'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'}
-    for path in subpage_paths:
+    total_text = ""
+    urls_to_visit = {base_url}
+    processed_urls = set()
+    
+    # Schlüsselwörter für relevante Unterseiten
+    keywords = ['about', 'ueber-uns', 'company', 'unternehmen', 'services', 'leistungen', 
+                'product', 'produkt', 'solution', 'loesung', 'karriere', 'jobs', 'contact', 'kontakt']
+
+    try:
+        # Zuerst die Startseite analysieren und Links sammeln
+        response = requests.get(base_url, timeout=15, headers=headers)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            processed_urls.add(base_url)
+            
+            # Sammle Links von der Startseite
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                full_url = urljoin(base_url, href)
+                # Füge nur interne, relevante Links hinzu
+                if urlparse(full_url).netloc == urlparse(base_url).netloc:
+                    if any(keyword in full_url.lower() for keyword in keywords):
+                        urls_to_visit.add(full_url)
+    except requests.RequestException:
+        pass # Ignoriere, wenn die Startseite nicht geladen werden kann
+
+    # Besuche die gesammelten URLs und extrahiere den Text
+    for url in list(urls_to_visit)[:10]: # Limitiere auf 10 URLs, um die Laufzeit zu begrenzen
+        if url in processed_urls:
+            continue
         try:
-            url_to_scrape = urljoin(base_url.rstrip('/') + '/', path.lstrip('/'))
-            response = requests.get(url_to_scrape, timeout=10, headers=headers)
+            response = requests.get(url, timeout=10, headers=headers)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 for element in soup(["script", "style", "nav", "footer", "header", "aside"]):
                     element.decompose()
-                total_text += soup.get_text(separator=' ', strip=True) + " "
-        except requests.RequestException: continue
+                text = soup.get_text(separator=' ', strip=True)
+                total_text += f"\n\n--- Inhalt von {url} ---\n\n{text}"
+                processed_urls.add(url)
+        except requests.RequestException:
+            continue
+            
     return total_text.strip() if total_text else "Es konnte kein relevanter Text von der Webseite extrahiert werden."
-
+    
+@st.cache_data(ttl=600)
+def analyze_with_wappalyzer(website_url: str):
+    """
+    Analysiert die Webseite mit der Wappalyzer-Bibliothek auf eine breite Palette von Technologien.
+    """
+    try:
+        wappalyzer = Wappalyzer.latest()
+        webpage = WebPage.new_from_url(website_url, verify=False) # verify=False, um SSL-Fehler zu ignorieren
+        technologies = wappalyzer.analyze_with_versions(webpage)
+        # Bereinige das Ergebnis für eine bessere Lesbarkeit
+        tech_names = list(technologies.keys())
+        return tech_names
+    except Exception:
+        return [] # Gib eine leere Liste zurück, wenn die Analyse fehlschlägt
 def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
@@ -217,65 +265,71 @@ def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     evidence = {
         "Unternehmen": company_name,
         "Forensische Analyse": infra_data,
-        "Webseiten-Inhalt": website_text[:15000]
+        # LIMIT MASSIV ERHÖHT: Wir erlauben jetzt bis zu 200.000 Zeichen
+        "Webseiten-Inhalt": website_text[:200000]
     }
     evidence_json = json.dumps(evidence, indent=2, ensure_ascii=False)
 
     prompt_template = """
+[Hier fügen Sie Ihren finalen, detaillierten KI-Prompt ("Vorstands-Analyse") ein]
+"""
+    
+    prompt = prompt_template.format(evidence_json)
+
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
+        return None
+
+    prompt_template = """
 Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation.
-Beweismittel: {}
-Dein Auftrag: Erstelle einen strategischen Bericht basierend auf den Beweismitteln. Halte dich exakt an die folgende Berichtsstruktur.
+Du erhältst DREI Arten von Daten: Eine forensische MarTech-Analyse, eine allgemeine Technologie-Analyse von Wappalyzer und den Webseiten-Inhalt.
+
+**Beweismittel:** {}
+
+**Dein Auftrag:** Erstelle einen strategischen Bericht. Kombiniere alle drei Datenquellen.
+**WICHTIGE ANWEISUNG FÜR DIE WAPPALYZER-DATEN:** Extrahiere aus der rohen Wappalyzer-Liste NUR die strategisch relevanten Technologien. Ignoriere unwichtige JavaScript-Bibliotheken, Widgets oder Schriftarten. Konzentriere dich auf die folgenden Kategorien, falls vorhanden:
+- CMS (z.B. WordPress, Contentful)
+- E-Commerce-Plattform (z.B. Shopify, Magento)
+- Programmiersprache & Frameworks (z.B. PHP, React, Node.js)
+- Web Server (z.B. Nginx, Apache)
+- CDN (z.B. Cloudflare)
+- Datenbanken
 
 **Berichtsstruktur (Markdown):**
 
-### Teil 1: Firmenprofil
+### Teil 1: Firmenprofil & strategische Positionierung
 - **Unternehmen:** """ + company_name + """
-- **Kernbotschaft:** [Fasse die Hauptbotschaft der Webseite in einem Satz zusammen]
-- **Tätigkeit & Branche:** [Beschreibe in 2-3 Sätzen, was die Firma macht]
-- **Zielgruppe:** [Leite ab, wer die typischen Kunden sind]
+- **Kernbotschaft:** [Fasse die Hauptbotschaft zusammen]
+- **Tätigkeit & Branche:** [Beschreibe, was die Firma macht]
+- **Zielgruppe:** [Leite ab, wer die Kunden sind]
 
 ---
 
-### Teil 2: Forensischer Digital-Audit
+### Teil 2: Technologisches Fundament
+**Anweisung:** Erstelle eine Übersicht der wichtigsten, von dir gefilterten Technologien.
+
+* **Content Management / Shop-System:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
+* **Programmier-Framework:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
+* **Web Server / CDN:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
+
+---
+
+### Teil 3: Forensischer Digital-Audit
 **Gesamteinschätzung (Executive Summary):**
-[Bewerte die digitale Reife von 1-10 und formuliere eine Management-Zusammenfassung.]
+[Bewerte die digitale Reife basierend auf ALLEN Beweismitteln.]
 
 ---
-
-#### **Kategorie-Analyse**
-
-**Anweisung:** Gehe die Liste der "Erkannten Technologien" aus den Beweismitteln durch. Ordne JEDES gefundene Tool einer der folgenden Kategorien zu. Liste dann für jede Kategorie die zugeordneten Tools auf. Wenn für eine Kategorie keine Tools gefunden wurden, schreibe explizit "Keine". Bewerte erst DANACH den Reifegrad und die Implikation.
-
-**1. Tag Management & Daten-Grundlage**
-* **Status:** [Bewerte hier das gefundene TMS. z.B. 🟢 Google Tag Manager (Best Practice) oder 🔴 Keines (Kritische Lücke)]
-
-**2. Data & Analytics**
-* **Erkannte Tools:** [Liste hier die zugeordneten Tools mit Konfidenz-Emoji. Z.B.: 🟢 Google Analytics 4. Wenn keine, schreibe "Keine".]
-* **Reifegrad (1-5):**
-* **Implikation:** [Bewerte die Situation in dieser Kategorie in 1-2 Sätzen.]
-
-**3. Advertising & Performance Marketing**
-* **Erkannte Tools:** [Liste hier die zugeordneten Tools. Z.B.: 🟢 Meta Pixel. Wenn keine, schreibe "Keine".]
-* **Reifegrad (1-5):**
-* **Implikation:** [Bewerte die Situation in dieser Kategorie in 1-2 Sätzen.]
-
-**4. Marketing Automation & CRM**
-* **Erkannte Tools:** [Liste hier die zugeordneten Tools. Wenn keine, schreibe "Keine".]
-* **Reifegrad (1-5):**
-* **Implikation:** [Bewerte die Situation in dieser Kategorie in 1-2 Sätzen.]
-
-**5. Customer Experience & Personalisierung (CRO)**
-* **Erkannte Tools:** [Liste hier die zugeordneten Tools. Wenn keine, schreibe "Keine".]
-* **Reifegrad (1-5):**
-* **Implikation:** [Bewerte die Situation in dieser Kategorie in 1-2 Sätzen.]
-
----
-
 #### Strategische Auswertung & Handlungsbedarf
 **✅ Operative Stärken:**
 * **Stärke:** [Nenne die größte Stärke und begründe sie mit den Beweismitteln.]
+
 **⚠️ Strategische Risiken (Handlungsbedarf):**
 * **Risiko:** [Nenne die größte Schwäche und das konkrete Geschäftsrisiko.]
+
 ---
 #### Empfohlener Strategischer Fahrplan
 **🚀 Unser strategischer Vorschlag (Phasenplan):**
@@ -303,25 +357,22 @@ if 'infra_data' not in st.session_state:
     st.session_state.infra_data = None
 
 if st.button("Analyse starten", type="primary"):
-    st.session_state.dossier = None
-    st.session_state.infra_data = None
-    if not url or not (url.startswith('http://') or url.startswith('https://')):
-        st.error("Bitte geben Sie eine gültige, vollständige URL ein (z.B. https://www.beispiel.de).")
-    else:
-        infra_data_result = None
-        with st.spinner("Führe forensische Infrastruktur-Analyse durch..."):
-            infra_data_result = analyze_infrastructure(url)
-        
+    swith st.spinner("Führe universelle forensische Analyse durch... (kann bis zu 90s dauern)"):
+        infra_data_result = analyze_infrastructure(url)
+        wappalyzer_result = analyze_with_wappalyzer(url)
+
         if infra_data_result:
             st.session_state.infra_data = infra_data_result
-            with st.spinner("Extrahiere Webseiten-Inhalte und erstelle KI-Analyse..."):
-                extracted_info = tldextract.extract(url)
-                company_name = extracted_info.domain.capitalize()
-                website_text = scrape_website_text(url)
-                st.session_state.dossier = generate_dossier(st.session_state.infra_data, website_text, company_name)
+            # NEU: Wappalyzer-Ergebnisse zu den Beweismitteln hinzufügen
+            st.session_state.infra_data['wappalyzer_technologies'] = wappalyzer_result
+
+            extracted_info = tldextract.extract(url)
+            company_name = extracted_info.domain.capitalize()
+            website_text = scrape_website_text(url)
+            st.session_state.dossier = generate_dossier(st.session_state.infra_data, website_text, company_name)
             st.success("Analyse abgeschlossen!")
         else:
-            st.warning("Die Analyse wurde abgebrochen, da die Webseite nicht geladen werden konnte oder ein Fehler auftrat.")
+            st.warning("Die Analyse wurde abgebrochen...")
 
 if st.session_state.dossier:
     st.markdown("---")
