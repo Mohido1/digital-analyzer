@@ -222,11 +222,9 @@ def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     evidence_json = json.dumps(evidence, indent=2, ensure_ascii=False)
 
     prompt_template = """
-Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation. Deine Aufgabe ist es, ein strategisches Dossier zu erstellen.
-
+Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation.
 Beweismittel: {}
-
-Dein Auftrag: Erstelle einen strategischen Bericht. Sei präzise, direkt und begründe jeden Punkt. Halte dich exakt an die folgende Berichtsstruktur.
+Dein Auftrag: Erstelle einen strategischen Bericht basierend auf den Beweismitteln. Halte dich exakt an die folgende Berichtsstruktur.
 
 **Berichtsstruktur (Markdown):**
 
@@ -240,70 +238,49 @@ Dein Auftrag: Erstelle einen strategischen Bericht. Sei präzise, direkt und beg
 
 ### Teil 2: Forensischer Digital-Audit
 **Gesamteinschätzung (Executive Summary):**
-[Bewerte die digitale Reife von 1-10 und formuliere eine prägnante Management-Zusammenfassung basierend auf den Beweisen. Unterscheide klar zwischen Tools im GTM und hartcodierten Tools.]
+[Bewerte die digitale Reife von 1-10 und formuliere eine Management-Zusammenfassung.]
 
 ---
 
 #### **Kategorie-Analyse**
 
-**Anweisung:** Bewerte **JEDE** der folgenden 7 Kategorien. Liste für jede Kategorie die gefundenen Tools oder schreibe explizit "**🔴 Lücke:** [Beschreibung der Lücke]", wenn nichts gefunden wurde. Gib für jede Kategorie einen Reifegrad von 1-5 an.
+**Anweisung:** Gehe die Liste der "Erkannten Technologien" aus den Beweismitteln durch. Ordne JEDES gefundene Tool einer der folgenden Kategorien zu. Liste dann für jede Kategorie die zugeordneten Tools auf. Wenn für eine Kategorie keine Tools gefunden wurden, schreibe explizit "Keine". Bewerte erst DANACH den Reifegrad und die Implikation.
 
 **1. Tag Management & Daten-Grundlage**
-* **Status:** [Bewerte hier das gefundene TMS. z.B. 🟢 Google Tag Manager (Best Practice) oder 🟡 Tealium iQ (Enterprise-Alternative) oder 🔴 Keines (Kritische Lücke)]
+* **Status:** [Bewerte hier das gefundene TMS. z.B. 🟢 Google Tag Manager (Best Practice) oder 🔴 Keines (Kritische Lücke)]
 
 **2. Data & Analytics**
-* **Gefundene Tools:** [Liste hier Tools aus dieser Kategorie mit Konfidenz-Emoji 🟢/🟡]
-* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Es wird keine Web-Analyse betrieben, um das Nutzerverhalten zu verstehen."]
+* **Erkannte Tools:** [Liste hier die zugeordneten Tools mit Konfidenz-Emoji. Z.B.: 🟢 Google Analytics 4. Wenn keine, schreibe "Keine".]
 * **Reifegrad (1-5):**
+* **Implikation:** [Bewerte die Situation in dieser Kategorie in 1-2 Sätzen.]
 
 **3. Advertising & Performance Marketing**
-* **Gefundene Tools:** [...]
-* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Es findet kein Retargeting oder Conversion-Tracking für Werbekampagnen statt."]
+* **Erkannte Tools:** [Liste hier die zugeordneten Tools. Z.B.: 🟢 Meta Pixel. Wenn keine, schreibe "Keine".]
 * **Reifegrad (1-5):**
+* **Implikation:** [Bewerte die Situation in dieser Kategorie in 1-2 Sätzen.]
 
-**4. DSP & Programmatic Advertising**
-* **Gefundene Tools:** [...]
-* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Das Unternehmen nutzt keine programmatischen Werbeplattformen für eine skalierte Reichweite."]
+**4. Marketing Automation & CRM**
+* **Erkannte Tools:** [Liste hier die zugeordneten Tools. Wenn keine, schreibe "Keine".]
 * **Reifegrad (1-5):**
+* **Implikation:** [Bewerte die Situation in dieser Kategorie in 1-2 Sätzen.]
 
-**5. Marketing Automation & CRM**
-* **Gefundene Tools:** [...]
-* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Prozesse zur Lead-Generierung und -Pflege sind nicht automatisiert."]
+**5. Customer Experience & Personalisierung (CRO)**
+* **Erkannte Tools:** [Liste hier die zugeordneten Tools. Wenn keine, schreibe "Keine".]
 * **Reifegrad (1-5):**
-
-**6. Customer Experience & Personalisierung (CRO)**
-* **Gefundene Tools:** [...]
-* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Die Webseite wird nicht aktiv optimiert (z.B. durch A/B-Tests oder Heatmaps)."]
-* **Reifegrad (1-5):**
-
-**7. Cloud-Nutzung & Infrastruktur**
-* **Gefundene Tools:** [...]
-* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "Keine direkten Signale für eine spezifische Public-Cloud-Nutzung im Frontend erkannt."]
-* **Reifegrad (1-5):**
+* **Implikation:** [Bewerte die Situation in dieser Kategorie in 1-2 Sätzen.]
 
 ---
 
-#### **Strategische Auswertung für das Kundengespräch**
-
-**✅ Stärken (Was gut läuft und warum):**
-
-* **Stärke 1:** [Nenne die größte Stärke]
-    * **Beobachtung:** [Beschreibe den technischen Fakt.]
-    * **Bedeutung (Intern):** [Erkläre die strategische Bedeutung.]
-    * **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
-
-**⚠️ Schwächen (Wo das größte Potenzial liegt):**
-
-* **Schwäche 1:** [Nenne die größte Schwäche]
-    * **Beobachtung:** [Beschreibe den technischen Fakt oder die Lücke.]
-    * **Konkretes Geschäftsrisiko:** [Erkläre das daraus resultierende Geschäftsproblem.]
-    * **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
-
-**🚀 Top-Empfehlung (Unser konkreter Vorschlag):**
-
-* **Problem:** [Fasse die größte Schwäche in einem Satz als klares Geschäftsproblem zusammen.]
-* **Lösung:** [Beschreibe die konkrete Google-Lösung (z.B. aus dem GMP oder Google Cloud Portfolio).]
-* **Ihr Mehrwert:** [Liste 2-3 klare Vorteile für den Kunden auf (z.B. "Präzisere Erfolgsmessung", "Effizienteres Marketing", "Zukunftssicherheit").]
+#### Strategische Auswertung & Handlungsbedarf
+**✅ Operative Stärken:**
+* **Stärke:** [Nenne die größte Stärke und begründe sie mit den Beweismitteln.]
+**⚠️ Strategische Risiken (Handlungsbedarf):**
+* **Risiko:** [Nenne die größte Schwäche und das konkrete Geschäftsrisiko.]
+---
+#### Empfohlener Strategischer Fahrplan
+**🚀 Unser strategischer Vorschlag (Phasenplan):**
+* **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt.]
+* **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
 """
     
     prompt = prompt_template.format(evidence_json)
