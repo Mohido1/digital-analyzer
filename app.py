@@ -263,88 +263,78 @@ def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     # Der Prompt wird als saubere f-string Vorlage erstellt
     prompt = f"""
 """
+"""
 Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation und GMP.
-Du erhältst ein JSON-Objekt mit forensischen Beweismitteln von einer Webseite.
-
 Beweismittel: {}
 
 **Zusätzliche Anweisung zur GMP-Analyse:** Wenn du in den Beweismitteln "Google Marketing Platform (Floodlight)" findest, musst du daraus folgende Schlussfolgerungen ziehen:
-* **Campaign Manager 360 (CM360):** Die Nutzung ist **gesichert (🟢)**.
-* **Display & Video 360 (DV360):** Die Nutzung ist **sehr wahrscheinlich (🟡)**.
-* **Search Ads 360 (SA360):** Die Nutzung ist **möglich (🟡)**.
-Integriere diese abgeleiteten Tools in deine Analyse.
+* **Campaign Manager 360 (CM360):** Die Nutzung ist **gesichert**.
+* **Display & Video 360 (DV360):** Die Nutzung ist **sehr wahrscheinlich**.
+* **Search Ads 360 (SA360):** Die Nutzung ist **möglich**.
+Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie entsprechend.
 
-**Dein Auftrag:** Erstelle ein umfassendes strategisches Dossier. Kombiniere alle Beweismittel zu einer tiefgehenden Analyse. Halte dich exakt an die folgende Berichtsstruktur.
+**Dein Auftrag:** Erstelle einen strategischen Bericht basierend auf den Beweismitteln und den obigen Regeln. Halte dich exakt an die folgende Berichtsstruktur. Verwende in deiner finalen Antwort Emojis zur Visualisierung (z.B. 🟢 für Sicher, 🟡 für Wahrscheinlich, 🔴 für Lücke).
 
 **Berichtsstruktur (Markdown):**
 
 ---
 ### **Teil 1: Firmenprofil & strategische Positionierung**
 - **Unternehmen:** """ + company_name + """
-- **Kernbotschaft:** [Fasse die Hauptbotschaft der Webseite in einem Satz zusammen.]
-- **Tätigkeit & Branche:** [Beschreibe detailliert, was die Firma macht und in welcher Branche sie tätig ist.]
-- **Unternehmensgröße (geschätzt):** [Schätze die Unternehmensgröße (z.B. "KMU", "Mittelstand", "Großunternehmen") basierend auf dem Webseiten-Inhalt, insbesondere der Karriereseite.]
-- **Zielgruppe:** [Leite ab, wer die typischen Kunden sind (B2B/B2C, Branchen etc.).]
+- **Kernbotschaft:** [Fasse die Hauptbotschaft zusammen]
+- **Tätigkeit & Branche:** [Beschreibe, was die Firma macht]
+- **Unternehmensgröße (geschätzt):** [Schätze die Unternehmensgröße]
+- **Zielgruppe:** [Leite ab, wer die Kunden sind]
 
 ---
 ### **Teil 2: Technologisches Fundament**
-**Anweisung:** Erstelle eine Übersicht der wichtigsten erkannten Technologien. Ordne dafür alle gefundenen Tools aus der "Forensische MarTech-Analyse" den passenden Kategorien zu.
-* **Content Management & E-Commerce:** [Liste hier Tools wie Shopify, Magento, WooCommerce auf. Wenn keines, schreibe "Nicht erkannt".]
-* **Marketing Automation & CRM:** [Liste hier Tools wie HubSpot, Pardot auf. Wenn keines, schreibe "Nicht erkannt".]
-* **Analytics & User Experience:** [Liste hier Tools wie Google Analytics, Matomo, Hotjar auf.]
-* **Advertising & Performance:** [Liste hier Tools wie Meta Pixel, Google Ads, Floodlight und die daraus abgeleiteten GMP-Tools auf.]
-* **Cloud & Infrastruktur:** [Liste hier Tools wie AWS, Cloudflare auf.]
+**Anweisung:** Erstelle eine Übersicht der wichtigsten erkannten Technologien.
+* **Content Management / Shop-System:** [Nenne das relevante Tool. Wenn keines, schreibe "Unbekannt".]
+* **Marketing Automation & CRM:** [Nenne das relevante Tool.]
+* **Analytics & User Experience:** [Nenne das relevante Tool.]
+* **Advertising & Performance:** [Nenne das relevante Tool.]
 
 ---
 ### **Teil 3: Forensischer Digital-Audit**
 **Gesamteinschätzung (Executive Summary):**
-[Bewerte die digitale Reife von 1-10 und formuliere eine prägnante Management-Zusammenfassung basierend auf allen Beweismitteln. Gehe auf die Nutzung (oder das Fehlen) eines Tag Managers ein.]
+[Bewerte die digitale Reife basierend auf ALLEN Beweismitteln.]
 
 ---
 #### **Detaillierte Kategorie-Analyse**
-**Anweisung:** Bewerte **JEDE** der folgenden Kategorien.
+**Anweisung:** Bewerte JEDE der folgenden Kategorien.
 **1. Tag Management & Daten-Grundlage**
-* **Status:** [Bewerte hier das gefundene TMS. z.B. 🟢 Google Tag Manager (professionell), 🟡 Tealium (Enterprise-Alternative), 🔴 Keines (kritische Lücke), 🔴 Wildwuchs (nur hartcodierte Skripte).]
+* **Status:** [Bewerte hier das gefundene TMS.]
 
 **2. Data & Analytics**
-* **Status & Implikation:** [Bewerte die Situation in dieser Kategorie. Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Dem Unternehmen fehlt die grundlegendste Fähigkeit, das Nutzerverhalten zu analysieren. Geschäftsentscheidungen werden 'blind' getroffen."]
+* **Status & Implikation:** [Bewerte die Situation. Wenn keine Tools gefunden wurden, schreibe: "**Lücke:** Es wird keine Web-Analyse betrieben."]
 * **Reifegrad (1-5):**
 
 **3. Advertising & Kundengewinnung**
-* **Status & Implikation:** [Bewerte die Situation basierend auf gefundenen Pixeln und Events. Wenn nichts gefunden wurde, schreibe: "**🔴 Lücke:** Es gibt keine technische Grundlage, um den Erfolg von Werbeausgaben (ROAS) zu messen."]
+* **Status & Implikation:** [Bewerte die Situation. Wenn keine Tools gefunden wurden, schreibe: "**Lücke:** Es findet kein Conversion-Tracking statt."]
 * **Reifegrad (1-5):**
 
 ---
 ### **Teil 4: Strategische Auswertung für das Kundengespräch**
-**✅ Stärken (Was gut läuft und warum):**
+**Stärken (Was gut läuft und warum):**
 * **Stärke:** [Nenne die größte Stärke]
     * **Beobachtung:** [Beschreibe den technischen Fakt.]
-    * **Beweis (Code-Snippet):** [Füge hier den relevanten "proof"-Schnipsel aus den Beweismitteln ein.]
+    * **Beweis (Code-Snippet):** [Füge den "proof"-Schnipsel ein.]
     * **Bedeutung (Intern):** [Erkläre die strategische Bedeutung.]
-    * **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+    * **Erläuterung für den Kunden:** [Formuliere eine Analogie.]
 
-**⚠️ Schwächen (Wo das größte Potenzial liegt):**
+**Schwächen (Wo das größte Potenzial liegt):**
 * **Schwäche:** [Nenne die größte Schwäche]
     * **Beobachtung:** [Beschreibe den technischen Fakt oder die Lücke.]
-    * **Beweis:** [Wenn eine Lücke besteht, schreibe z.B.: "Es konnte kein Code-Schnipsel für ein Conversion-Event wie 'purchase' gefunden werden."]
-    * **Konkretes Geschäftsrisiko:** [Erkläre das daraus resultierende Geschäftsproblem.]
-    * **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+    * **Beweis:** [Gib den Beweis an.]
+    * **Konkretes Geschäftsrisiko:** [Erkläre das Geschäftsproblem.]
+    * **Erläuterung für den Kunden:** [Formuliere eine Analogie.]
 
 ---
 ### **Teil 5: Empfohlener Strategischer Fahrplan**
-**💡 Quick Wins (Sofortmaßnahmen mit hohem ROI):**
+**Quick Wins (Sofortmaßnahmen mit hohem ROI):**
 * [Liste hier 1-2 konkrete, schnell umsetzbare Maßnahmen auf.]
 
-**🚀 Unser strategischer Vorschlag (Phasenplan):**
-* **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt, um die größte Lücke zu schließen.]
-* **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
-"""
-
----
-
-#### Empfohlener Strategischer Fahrplan
-**🚀 Unser strategischer Vorschlag (Phasenplan):**
-* **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt, basierend auf der größten Schwäche.]
+**Unser strategischer Vorschlag (Phasenplan):**
+* **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt.]
 * **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
 """
 
