@@ -6,7 +6,9 @@ import json
 import re
 from urllib.parse import urljoin, urlparse
 
-# --- Konstanten und Konfiguration ---
+# --- 1. Konstanten und Konfiguration ---
+
+st.set_page_config(page_title="Strategie-Dossier Pro", page_icon="🚀", layout="wide")
 
 TECHNOLOGY_SIGNATURES = {
     "Google Analytics 4": {"signatures": [r"G-[A-Z0-9]+"], "confidence": "high"},
@@ -18,6 +20,7 @@ TECHNOLOGY_SIGNATURES = {
     "HubSpot": {"signatures": [r"js\.hs-scripts\.com", r"_hsq\.push"], "confidence": "high"},
     "Tealium": {"signatures": [r"tags\.tiqcdn\.com"], "confidence": "high"},
     "Adobe Launch": {"signatures": [r"assets\.adobedtm\.com"], "confidence": "high"},
+    "Cloudflare": {"signatures": [r"cdn-cgi/scripts"], "confidence": "medium"},
 }
 
 TAG_MANAGERS = {
@@ -28,13 +31,12 @@ TAG_MANAGERS = {
 
 BUSINESS_EVENTS = ['purchase', 'add_to_cart', 'begin_checkout', 'form_submission', 'lead', 'sign_up']
 
-# --- Python-Logik: Backend-Funktionen ---
+# --- 2. Kernlogik-Funktionen (mit Caching für Performance) ---
 
+@st.cache_data(ttl=3600) # Cache für 1 Stunde
 def analyze_infrastructure(website_url: str) -> dict:
     """
     Führt eine universelle, zweistufige forensische Analyse durch.
-    1. Analysiert das HTML auf Tag Manager und hartcodierte Skripte.
-    2. Führt eine Tiefenanalyse des GTM-Containers durch, falls vorhanden.
     """
     results = {
         "tag_management_system": "Keines",
@@ -43,143 +45,173 @@ def analyze_infrastructure(website_url: str) -> dict:
         "gtm_tools": [],
         "gtm_events": []
     }
-    headers = {'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
     
     try:
         response = requests.get(website_url, timeout=15, headers=headers)
         response.raise_for_status()
         html_content = response.text
-    except requests.RequestException as e:
-        st.error(f"Fehler beim Laden der Webseite: {e}")
-        return results
+    except requests.RequestException:
+        st.error(f"Fehler: Die Webseite unter {website_url} konnte nicht geladen werden. Bitte prüfen Sie die URL.")
+        return None
 
-    # --- Teil A: Allgemeine HTML-Analyse ---
-    # 1. Tag-Manager-Erkennung
+    # Schritt A: TMS-Identifikation
     for name, signature in TAG_MANAGERS.items():
         if re.search(signature, html_content, re.IGNORECASE):
             results["tag_management_system"] = name
             break
 
-    # 2. Hartcodierte Tools im HTML finden
+    # Schritt B: Allgemeiner HTML-Scan nach hartcodierten Tools
     for tech_name, data in TECHNOLOGY_SIGNATURES.items():
         for signature in data["signatures"]:
             match = re.search(f".*{signature}.*", html_content, re.IGNORECASE)
-            if match:
-                # Extrahiere den relevanten Code-Teil als Beweis
-                proof_snippet = match.group(0).strip()
-                # Verhindere Duplikate
-                if not any(d['name'] == tech_name for d in results['hardcoded_tools']):
-                     results["hardcoded_tools"].append({
-                        "name": tech_name,
-                        "confidence": data["confidence"],
-                        "proof": proof_snippet
-                    })
+            if match and not any(d['name'] == tech_name for d in results['hardcoded_tools']):
+                results['hardcoded_tools'].append({
+                    "name": tech_name, "confidence": data["confidence"], "proof": match.group(0).strip()
+                })
 
-    # --- Teil B: GTM-Tiefen-Analyse ---
+    # Schritt C: GTM-Tiefen-Analyse
     if results["tag_management_system"] == "Google Tag Manager":
         gtm_match = re.search(r'(GTM-[A-Z0-9]+)', html_content)
         if gtm_match:
             results["gtm_id"] = gtm_match.group(1)
             gtm_url = f"https://www.googletagmanager.com/gtm.js?id={results['gtm_id']}"
-            
             try:
                 gtm_response = requests.get(gtm_url, timeout=10, headers=headers)
                 if gtm_response.status_code == 200:
                     gtm_content = gtm_response.text
                     lines = gtm_content.splitlines()
-
-                    # Tools im GTM finden
                     for tech_name, data in TECHNOLOGY_SIGNATURES.items():
                         for signature in data["signatures"]:
-                             for line in lines:
-                                if re.search(signature, line, re.IGNORECASE):
-                                    if not any(d['name'] == tech_name for d in results['gtm_tools']):
-                                        results["gtm_tools"].append({
-                                            "name": tech_name, "confidence": data["confidence"], "proof": line.strip()
-                                        })
+                            for line in lines:
+                                if re.search(signature, line, re.IGNORECASE) and not any(d['name'] == tech_name for d in results['gtm_tools']):
+                                    results["gtm_tools"].append({"name": tech_name, "confidence": data["confidence"], "proof": line.strip()})
                                     break
-                             else: continue
-                             break
-
-                    # Events im GTM finden
+                            else: continue
+                            break
                     for event in BUSINESS_EVENTS:
                         pattern = re.compile(f"['\"]event['\"]:\\s*['\"]{event}['\"]", re.IGNORECASE)
                         for line in lines:
-                            if pattern.search(line):
-                                if not any(d['name'] == event for d in results['gtm_events']):
-                                    results["gtm_events"].append({"name": event, "proof": line.strip()})
+                            if pattern.search(line) and not any(d['name'] == event for d in results['gtm_events']):
+                                results["gtm_events"].append({"name": event, "proof": line.strip()})
                                 break
-
             except requests.RequestException:
-                pass # Fehler beim Laden der gtm.js ignorieren
-
+                pass
     return results
 
+@st.cache_data(ttl=3600) # Cache für 1 Stunde
 def scrape_website_text(base_url: str) -> str:
-    # Diese Funktion bleibt unverändert
-    return "Webseiten-Text-Extraktion übersprungen, um die Kernlogik zu demonstrieren." # Platzhalter für Kürze
+    """
+    Sammelt den Text von der Startseite und wichtigen Unterseiten.
+    """
+    subpage_paths = ['/', '/ueber-uns', '/about', '/about-us', '/services', '/leistungen', '/karriere', '/jobs']
+    total_text = ""
+    processed_urls = set()
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    
+    for path in subpage_paths:
+        url_to_scrape = urljoin(base_url, path)
+        if url_to_scrape in processed_urls: continue
+        try:
+            response = requests.get(url_to_scrape, timeout=10, headers=headers)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                for element in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                    element.decompose()
+                text = soup.get_text(separator=' ', strip=True)
+                total_text += f"\n\n--- Inhalt von {url_to_scrape} ---\n\n{text}"
+                processed_urls.add(url_to_scrape)
+        except requests.RequestException:
+            continue
+    return total_text.strip() if total_text else "Es konnte kein relevanter Text von der Webseite extrahiert werden."
 
-def generate_audit(infra_data: dict, website_text: str) -> str:
+def generate_dossier(infra_data: dict, website_text: str) -> str:
     """
-    Erstellt den forensischen Audit mit Beweisführung mithilfe der Gemini API.
+    Erstellt das strategische Dossier mit der Google Gemini API.
     """
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+    except (KeyError, FileNotFoundError):
+        st.error("GEMINI_API_KEY nicht in den Streamlit Secrets gefunden. Bitte fügen Sie ihn hinzu.")
+        return None
+
+    evidence = {
+        "Forensische Analyse": infra_data,
+        "Webseiten-Inhalt": website_text[:40000]
+    }
+    
+    # Der finale "Vorstands-Analyse"-Prompt
     prompt = f"""
-Du bist ein Senior Digital Forensics Analyst. Deine Aufgabe ist es, einen unangreifbaren Audit für unser Sales-Team zu erstellen, bei dem jede Kernaussage mit einem Beweis untermauert wird.
+Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation und datengetriebene Geschäftsmodelle. Deine Aufgabe ist es, ein strategisches Dossier für eine Vorstandssitzung zu erstellen.
 
-Beweismittel: {json.dumps(infra_data, indent=2)}
+Beweismittel: {json.dumps(evidence, indent=2, ensure_ascii=False)}
 
-Dein Auftrag: Erstelle einen forensischen Bericht. Halte dich exakt an die folgende Berichtsstruktur.
+Dein Auftrag: Erstelle ein strategisches Dossier. Sei präzise, direkt und begründe jeden Punkt mit klaren Geschäftsrisiken oder -chancen.
 
 **Berichtsstruktur (Markdown):**
 
-# Forensischer Digital-Audit (mit Beweisführung)
+# Strategisches Dossier: Digitale Positionierung
 
 ---
 
-## Teil 1: Firmenprofil
+## Teil 1: Firmenprofil & strategische Positionierung
 - **Unternehmen:** [Leite den Firmennamen aus dem Inhalt ab]
 - **Kernbotschaft:** [Fasse die Hauptbotschaft oder den Slogan der Webseite in einem Satz zusammen]
-- **Tätigkeit & Branche:** [Beschreibe detailliert, was die Firma macht und in welcher Branche sie tätig ist]
+- **Tätigkeit & Branche:** [Beschreibe in 2-3 Sätzen detailliert, was die Firma macht und in welcher Branche sie tätig ist]
 - **Zielgruppe:** [Leite aus der Sprache und den Angeboten ab, wer die typischen Kunden sind]
 
 ---
 
 ## Teil 2: Forensischer Digital-Audit
 **Gesamteinschätzung (Executive Summary):**
-[Bewerte die digitale Reife von 1-10 und formuliere eine prägnante Management-Zusammenfassung basierend auf den Beweisen. Unterscheide klar zwischen Tools im GTM und hartcodierten Tools.]
+[Bewerte die digitale Reife von 1-10 und formuliere eine prägnante Management-Zusammenfassung (3-4 Sätze) über die allgemeine Situation. Berücksichtige dabei die Nutzung eines TMS versus hartcodierter Skripte.]
 
-### Kategorie-Analyse
-[Für jede der folgenden Kategorien: Liste die gefundenen Tools mit Konfidenz-Emoji (🟢/🟡). Liste danach explizit auf, welche wichtigen Tools aus dieser Kategorie NICHT gefunden wurden (🔴 Lücke).]
-- **Tag Management & Daten-Grundlage**
-- **Data & Analytics**
-- **Advertising & Performance Marketing**
-- **Marketing Automation & CRM**
-- **Customer Experience & Personalisierung**
+### Audit der Kernkompetenzen
+**Anweisung:** Bewerte JEDE der folgenden Kategorien.
+
+**1. Daten-Grundlage & Tag Management**
+- **Status:** [{evidence['Forensische Analyse']['tag_management_system']}]
+
+**2. Data & Analytics**
+- **Gefundene Tools:** [Liste gefundene Tools. Wenn leer: "Keine"]
+- **Status & Implikation:** [Wenn keine Tools gefunden wurden, schreibe: "🔴 Lücke: Dem Unternehmen fehlt die grundlegendste Fähigkeit, das Nutzerverhalten zu analysieren. Entscheidungen werden 'blind' getroffen."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
+
+**3. Advertising & Kundengewinnung**
+- **Gefundene Tools:** [Liste gefundene Tools]
+- **Status & Implikation:** [Wenn keine Tools/Events gefunden wurden, schreibe: "🔴 Lücke: Es gibt keine technische Grundlage, um den Erfolg von Werbeausgaben zu messen (ROAS). Investitionen sind nicht messbar."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
+
+**4. Marketing Automation & CRM**
+- **Gefundene Tools:** [Liste gefundene Tools]
+- **Status & Implikation:** [Wenn keine Tools gefunden wurden, schreibe: "🔴 Lücke: Prozesse zur Lead-Pflege und Kundenbindung sind nicht automatisiert und skalierbar."]
+- **Reifegrad (1-5):** [Bewerte von 1-5]
 
 ---
 
-## Teil 3: Strategische Auswertung (mit Beweisführung)
+## Teil 3: Strategische Auswertung & Handlungsbedarf
+**✅ Operative Stärken:**
+- **Stärke:** [Nenne die größte Stärke]
+- **Beobachtung:** [Der technische Fakt.]
+- **Strategische Implikation:** [Erkläre in 2-3 Sätzen die positive Auswirkung auf das Geschäft.]
 
-**✅ Stärken (Was gut läuft und warum):**
-- **Stärke 1:** [Nenne die größte Stärke]
-- **Beobachtung:** [Beschreibe den technischen Fakt.]
-- **Beweis (Code-Snippet):** [Füge hier den "proof"-Schnipsel aus den Beweismitteln ein, formatiert als Code.]
-- **Bedeutung (Intern):** [Erkläre die strategische Bedeutung.]
-- **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+**⚠️ Strategische Risiken (Handlungsbedarf):**
+- **Risiko:** [Nenne die größte Schwäche. Bewerte hartcodierte Skripte als hohes Risiko.]
+- **Beobachtung:** [Der technische Fakt oder die Lücke.]
+- **Konkretes Geschäftsrisiko:** [Erkläre in 2-3 Sätzen die negativen Auswirkungen auf das Geschäft.]
 
-**⚠️ Schwächen (Wo das größte Potenzial liegt):**
-- **Schwäche 1:** [Nenne die größte Schwäche. Beachte besonders hartcodierte Skripte als Problem.]
-- **Beobachtung:** [Beschreibe den technischen Fakt oder die Lücke.]
-- **Beweis:** [Wenn eine Lücke besteht, schreibe z.B.: "Es konnte kein Code-Schnipsel für ein Conversion-Event wie 'purchase' gefunden werden." Wenn ein hartcodiertes Skript das Problem ist, zeige den "proof" dafür.]
-- **Konkretes Geschäftsrisiko:** [Erkläre das daraus resultierende Geschäftsproblem.]
-- **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+## Teil 4: Empfohlener Strategischer Fahrplan
+**💡 Quick Wins (Sofortmaßnahmen mit hohem ROI):**
+- [Liste hier 1-2 konkrete, schnell umsetzbare Maßnahmen auf.]
 
-**🚀 Top-Empfehlung (Unser konkreter Vorschlag):**
-[Formuliere eine klare, umsetzbare Handlungsempfehlung, die direkt auf der größten Schwäche aufbaut und eine Lösung anbietet (Problem, Lösung, Mehrwert).]
+**🚀 Unser strategischer Vorschlag (Phasenplan):**
+- **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt, um die größte Lücke zu schließen.]
+- **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
+- **Langfristige Vision:** [Beschreibe das Endziel in einem Satz.]
 """
+    
     try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         return response.text
@@ -187,59 +219,23 @@ Dein Auftrag: Erstelle einen forensischen Bericht. Halte dich exakt an die folge
         st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
         return None
 
-# --- Streamlit Benutzeroberfläche ---
+# --- 3. Streamlit Benutzeroberfläche ---
 
-st.set_page_config(page_title="Universal Forensic Auditor", page_icon="🌐")
+st.title("🚀 Strategie-Dossier Pro")
+st.markdown("Geben Sie eine URL ein, um eine tiefgehende, forensische Analyse der digitalen Infrastruktur zu erstellen – optimiert für das Management.")
 
-st.title("🌐 Universal Forensic Auditor")
-st.markdown("Führt einen universellen Audit durch, der hartcodierte Skripte von via Tag-Manager geladenen Skripten unterscheidet.")
+url = st.text_input("Geben Sie die vollständige URL der Webseite ein", "https://www.google.com")
 
-# Session State
-if 'audit' not in st.session_state:
-    st.session_state.audit = ""
-if 'infra' not in st.session_state:
-    st.session_state.infra = {}
+if 'dossier' not in st.session_state:
+    st.session_state.dossier = None
+if 'infra_data' not in st.session_state:
+    st.session_state.infra_data = None
 
-# UI-Elemente
-url = st.text_input("Geben Sie die vollständige URL der Webseite ein (z.B. `https://www.google.com`)")
-
-if st.button("Universellen Audit starten", type="primary"):
-    if not url:
-        st.warning("Bitte geben Sie eine URL ein.")
+if st.button("Analyse starten", type="primary"):
+    if not url or not re.match(r'http(s)?://', url):
+        st.error("Bitte geben Sie eine gültige, vollständige URL ein (z.B. https://www.beispiel.de).")
     else:
-        if not re.match(r'http(s)?://', url):
-            url = 'https://' + url
-        
-        with st.spinner("Führe universelle Analyse durch... Scanne HTML und GTM-Container..."):
-            st.session_state.infra = analyze_infrastructure(url)
-            # Die Text-Extraktion ist für diesen spezialisierten Audit weniger kritisch
-            website_text = scrape_website_text(url) 
-            st.session_state.audit = generate_audit(st.session_state.infra, website_text)
-
-# Ergebnis-Anzeige
-if st.session_state.audit:
-    st.markdown("---")
-    st.subheader("Forensischer Analysebericht")
-    st.markdown(st.session_state.audit)
-
-    st.markdown("---")
-    st.download_button(
-        label="📥 Bericht als Markdown herunterladen",
-        data=st.session_state.audit,
-        file_name=f"universal_audit_{urlparse(url).netloc}.md",
-        mime="text/markdown",
-    )
-
-    if st.checkbox("🔍 Detaillierte Beweismittel anzeigen (JSON)"):
-        st.subheader("Forensische Infrastruktur-Analyse")
-        st.json(st.session_state.infra)
-
-with st.expander("❓ Methodik & Anwendungsfall"):
-    st.markdown("""
-    **Anwendungsfall:** Dieses Tool liefert eine tiefgehende und realitätsnahe Analyse der Tracking-Infrastruktur einer Webseite. Es ist ideal, um komplexe Setups zu verstehen, bei denen Skripte sowohl zentral über einen Tag Manager als auch dezentral ("hartcodiert") im Quellcode eingebunden sind.
-
-    **Methodik:**
-    1.  **HTML-Analyse:** Zuerst wird der gesamte HTML-Quellcode der Seite geladen. Darin wird nach Signaturen für die gängigsten Tag-Management-Systeme (GTM, Tealium, Adobe) sowie nach direkt eingebundenen Tracking-Skripten gesucht.
-    2.  **GTM-Tiefenanalyse (optional):** Wird ein Google Tag Manager gefunden, extrahiert die App dessen spezifische ID, lädt die zugehörige `gtm.js`-Konfigurationsdatei und führt darin eine zweite, detaillierte Analyse auf Tools und Events durch.
-    3.  **Beweisbasierte Synthese:** Die KI erhält eine detaillierte Liste aller Beweismittel, klar getrennt nach Fundort (HTML oder GTM), und erstellt daraus einen strategischen Bericht, der diese wichtige Unterscheidung für die Bewertung der digitalen Reife nutzt.
-    """)
+        with st.spinner("Führe forensische Analyse durch... Dieser Vorgang kann bis zu 60 Sekunden dauern..."):
+            st.session_state.infra_data = analyze_infrastructure(url)
+            if st.session_state.infra_data:
+                website_text = scrape_website_text(url)
