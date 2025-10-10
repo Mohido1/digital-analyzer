@@ -341,7 +341,7 @@ prompt = prompt_template.format(evidence_json)
 try:
         model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
-        return response.text
+return response.text
 except Exception as e:
         st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
 return None
