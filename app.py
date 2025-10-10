@@ -259,78 +259,97 @@ def generate_dossier(infra_data: dict, website_text: str, company_name: str):
         "Forensische MarTech-Analyse": infra_data,
         "Webseiten-Inhalt": website_text[:15000]
     }
-    evidence_json = json.dumps(evidence, indent=2, ensure_ascii=False)
-
-
-    prompt_template = """
+    
+    # Der Prompt wird als saubere f-string Vorlage erstellt
+    prompt = f"""
+"""
 Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation und GMP.
+Du erhältst ein JSON-Objekt mit forensischen Beweismitteln von einer Webseite.
+
 Beweismittel: {}
 
-**Zusätzliche Anweisung zur GMP-Analyse:** Wenn du in den Beweismitteln "Google Marketing Platform (Floodlight)" findest, musst du daraus folgende Schlussfolgerungen ziehen und in deiner Analyse erwähnen:
-* **Campaign Manager 360 (CM360):** Die Nutzung ist **gesichert (🟢)**, da Floodlights hier erstellt und verwaltet werden.
-* **Display & Video 360 (DV360):** Die Nutzung ist **sehr wahrscheinlich (🟡)**, da dies das primäre Tool für programmatische Kampagnen ist, die mit Floodlights gemessen werden.
-* **Search Ads 360 (SA360):** Die Nutzung ist **möglich (🟡)**, wenn das Unternehmen stark in Suchmaschinenwerbung investiert, da SA360 Floodlights zur de-duplizierten Messung nutzt.
-Integriere diese abgeleiteten Tools in deine Kategorie-Analyse.
+**Zusätzliche Anweisung zur GMP-Analyse:** Wenn du in den Beweismitteln "Google Marketing Platform (Floodlight)" findest, musst du daraus folgende Schlussfolgerungen ziehen:
+* **Campaign Manager 360 (CM360):** Die Nutzung ist **gesichert (🟢)**.
+* **Display & Video 360 (DV360):** Die Nutzung ist **sehr wahrscheinlich (🟡)**.
+* **Search Ads 360 (SA360):** Die Nutzung ist **möglich (🟡)**.
+Integriere diese abgeleiteten Tools in deine Analyse.
 
-**Dein Auftrag:** Erstelle einen strategischen Bericht basierend auf den Beweismitteln und den obigen Regeln. Halte dich exakt an die folgende Berichtsstruktur.
-
-Du erhältst DREI Arten von Daten: Eine forensische MarTech-Analyse, eine allgemeine Technologie-Analyse von Wappalyzer und den Webseiten-Inhalt.
-
-**Beweismittel:** {}
-
-**Dein Auftrag:** Erstelle einen strategischen Bericht. Kombiniere alle drei Datenquellen.
-**WICHTIGE ANWEISUNG FÜR DIE WAPPALYZER-DATEN:** Extrahiere aus der rohen Wappalyzer-Liste NUR die strategisch relevanten Technologien. Ignoriere unwichtige JavaScript-Bibliotheken, Widgets oder Schriftarten. Konzentriere dich auf die folgenden Kategorien, falls vorhanden:
-- CMS (z.B. WordPress, Contentful)
-- E-Commerce-Plattform (z.B. Shopify, Magento)
-- Programmiersprache & Frameworks (z.B. PHP, React, Node.js)
-- Web Server (z.B. Nginx, Apache)
-- CDN (z.B. Cloudflare)
-- Datenbanken
+**Dein Auftrag:** Erstelle ein umfassendes strategisches Dossier. Kombiniere alle Beweismittel zu einer tiefgehenden Analyse. Halte dich exakt an die folgende Berichtsstruktur.
 
 **Berichtsstruktur (Markdown):**
 
-### Teil 1: Firmenprofil & strategische Positionierung
+---
+### **Teil 1: Firmenprofil & strategische Positionierung**
 - **Unternehmen:** """ + company_name + """
-- **Kernbotschaft:** [Fasse die Hauptbotschaft zusammen]
-- **Tätigkeit & Branche:** [Beschreibe, was die Firma macht]
-- **Unternehmensgröße**
-- **Zielgruppe:** [Leite ab, wer die Kunden sind]
+- **Kernbotschaft:** [Fasse die Hauptbotschaft der Webseite in einem Satz zusammen.]
+- **Tätigkeit & Branche:** [Beschreibe detailliert, was die Firma macht und in welcher Branche sie tätig ist.]
+- **Unternehmensgröße (geschätzt):** [Schätze die Unternehmensgröße (z.B. "KMU", "Mittelstand", "Großunternehmen") basierend auf dem Webseiten-Inhalt, insbesondere der Karriereseite.]
+- **Zielgruppe:** [Leite ab, wer die typischen Kunden sind (B2B/B2C, Branchen etc.).]
 
 ---
+### **Teil 2: Technologisches Fundament**
+**Anweisung:** Erstelle eine Übersicht der wichtigsten erkannten Technologien. Ordne dafür alle gefundenen Tools aus der "Forensische MarTech-Analyse" den passenden Kategorien zu.
+* **Content Management & E-Commerce:** [Liste hier Tools wie Shopify, Magento, WooCommerce auf. Wenn keines, schreibe "Nicht erkannt".]
+* **Marketing Automation & CRM:** [Liste hier Tools wie HubSpot, Pardot auf. Wenn keines, schreibe "Nicht erkannt".]
+* **Analytics & User Experience:** [Liste hier Tools wie Google Analytics, Matomo, Hotjar auf.]
+* **Advertising & Performance:** [Liste hier Tools wie Meta Pixel, Google Ads, Floodlight und die daraus abgeleiteten GMP-Tools auf.]
+* **Cloud & Infrastruktur:** [Liste hier Tools wie AWS, Cloudflare auf.]
 
-### Teil 2: Technologisches Fundament
-**Anweisung:** Erstelle eine Übersicht von AUSNAMSLOS ALLEN Technologien.
-
-* **Content Management / Shop-System:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
-* **Programmier-Framework:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
-* **Web Server / CDN:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
-
-Fokus auf Marketing Tools, Cloud, etc.
 ---
-
-### Teil 3: Forensischer Digital-Audit
+### **Teil 3: Forensischer Digital-Audit**
 **Gesamteinschätzung (Executive Summary):**
-[Bewerte die digitale Reife basierend auf ALLEN Beweismitteln.]
+[Bewerte die digitale Reife von 1-10 und formuliere eine prägnante Management-Zusammenfassung basierend auf allen Beweismitteln. Gehe auf die Nutzung (oder das Fehlen) eines Tag Managers ein.]
 
 ---
-#### Strategische Auswertung & Handlungsbedarf
-**✅ Operative Stärken:**
-* **Stärke:** [Nenne die größte Stärke und begründe sie mit den Beweismitteln.]
+#### **Detaillierte Kategorie-Analyse**
+**Anweisung:** Bewerte **JEDE** der folgenden Kategorien.
+**1. Tag Management & Daten-Grundlage**
+* **Status:** [Bewerte hier das gefundene TMS. z.B. 🟢 Google Tag Manager (professionell), 🟡 Tealium (Enterprise-Alternative), 🔴 Keines (kritische Lücke), 🔴 Wildwuchs (nur hartcodierte Skripte).]
 
-**⚠️ Strategische Risiken (Handlungsbedarf):**
-* **Risiko:** [Nenne die größte Schwäche und das konkrete Geschäftsrisiko.]
+**2. Data & Analytics**
+* **Status & Implikation:** [Bewerte die Situation in dieser Kategorie. Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Dem Unternehmen fehlt die grundlegendste Fähigkeit, das Nutzerverhalten zu analysieren. Geschäftsentscheidungen werden 'blind' getroffen."]
+* **Reifegrad (1-5):**
+
+**3. Advertising & Kundengewinnung**
+* **Status & Implikation:** [Bewerte die Situation basierend auf gefundenen Pixeln und Events. Wenn nichts gefunden wurde, schreibe: "**🔴 Lücke:** Es gibt keine technische Grundlage, um den Erfolg von Werbeausgaben (ROAS) zu messen."]
+* **Reifegrad (1-5):**
 
 ---
-#### Empfohlener Strategischer Fahrplan
+### **Teil 4: Strategische Auswertung für das Kundengespräch**
+**✅ Stärken (Was gut läuft und warum):**
+* **Stärke:** [Nenne die größte Stärke]
+    * **Beobachtung:** [Beschreibe den technischen Fakt.]
+    * **Beweis (Code-Snippet):** [Füge hier den relevanten "proof"-Schnipsel aus den Beweismitteln ein.]
+    * **Bedeutung (Intern):** [Erkläre die strategische Bedeutung.]
+    * **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+
+**⚠️ Schwächen (Wo das größte Potenzial liegt):**
+* **Schwäche:** [Nenne die größte Schwäche]
+    * **Beobachtung:** [Beschreibe den technischen Fakt oder die Lücke.]
+    * **Beweis:** [Wenn eine Lücke besteht, schreibe z.B.: "Es konnte kein Code-Schnipsel für ein Conversion-Event wie 'purchase' gefunden werden."]
+    * **Konkretes Geschäftsrisiko:** [Erkläre das daraus resultierende Geschäftsproblem.]
+    * **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+
+---
+### **Teil 5: Empfohlener Strategischer Fahrplan**
+**💡 Quick Wins (Sofortmaßnahmen mit hohem ROI):**
+* [Liste hier 1-2 konkrete, schnell umsetzbare Maßnahmen auf.]
+
 **🚀 Unser strategischer Vorschlag (Phasenplan):**
-* **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt.]
+* **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt, um die größte Lücke zu schließen.]
 * **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
 """
-    
-    prompt = prompt_template.format(evidence_json)
+
+---
+
+#### Empfohlener Strategischer Fahrplan
+**🚀 Unser strategischer Vorschlag (Phasenplan):**
+* **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt, basierend auf der größten Schwäche.]
+* **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
+"""
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
