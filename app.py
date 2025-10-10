@@ -285,7 +285,17 @@ def generate_dossier(infra_data: dict, website_text: str, company_name: str):
         return None
 
     prompt_template = """
-Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation.
+Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation und GMP.
+Beweismittel: {}
+
+**Zusätzliche Anweisung zur GMP-Analyse:** Wenn du in den Beweismitteln "Google Marketing Platform (Floodlight)" findest, musst du daraus folgende Schlussfolgerungen ziehen und in deiner Analyse erwähnen:
+* **Campaign Manager 360 (CM360):** Die Nutzung ist **gesichert (🟢)**, da Floodlights hier erstellt und verwaltet werden.
+* **Display & Video 360 (DV360):** Die Nutzung ist **sehr wahrscheinlich (🟡)**, da dies das primäre Tool für programmatische Kampagnen ist, die mit Floodlights gemessen werden.
+* **Search Ads 360 (SA360):** Die Nutzung ist **möglich (🟡)**, wenn das Unternehmen stark in Suchmaschinenwerbung investiert, da SA360 Floodlights zur de-duplizierten Messung nutzt.
+Integriere diese abgeleiteten Tools in deine Kategorie-Analyse.
+
+**Dein Auftrag:** Erstelle einen strategischen Bericht basierend auf den Beweismitteln und den obigen Regeln. Halte dich exakt an die folgende Berichtsstruktur.
+
 Du erhältst DREI Arten von Daten: Eine forensische MarTech-Analyse, eine allgemeine Technologie-Analyse von Wappalyzer und den Webseiten-Inhalt.
 
 **Beweismittel:** {}
@@ -305,17 +315,19 @@ Du erhältst DREI Arten von Daten: Eine forensische MarTech-Analyse, eine allgem
 - **Unternehmen:** """ + company_name + """
 - **Kernbotschaft:** [Fasse die Hauptbotschaft zusammen]
 - **Tätigkeit & Branche:** [Beschreibe, was die Firma macht]
+- **Unternehmensgröße**
 - **Zielgruppe:** [Leite ab, wer die Kunden sind]
 
 ---
 
 ### Teil 2: Technologisches Fundament
-**Anweisung:** Erstelle eine Übersicht der wichtigsten, von dir gefilterten Technologien.
+**Anweisung:** Erstelle eine Übersicht von AUSNAMSLOS ALLEN Technologien.
 
 * **Content Management / Shop-System:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
 * **Programmier-Framework:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
 * **Web Server / CDN:** [Nenne hier das relevante Tool aus der Wappalyzer-Liste. Wenn keines, schreibe "Unbekannt".]
 
+Fokus auf Marketing Tools, Cloud, etc.
 ---
 
 ### Teil 3: Forensischer Digital-Audit
