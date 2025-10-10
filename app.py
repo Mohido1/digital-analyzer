@@ -241,21 +241,26 @@ def scrape_website_text(base_url: str):
     
 @st.cache_data(ttl=600)
 
-def generate_dossier(infra_data: dict, website_text: str, company_name: str):
+ef generate_dossier(infra_data: dict, website_text: str, company_name: str):
+    """
+    Erstellt den forensischen Audit mit Beweisführung mithilfe der Gemini API.
+    Diese Version nutzt eine saubere und robuste Methode zur Prompt-Erstellung.
+    """
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
     except (KeyError, FileNotFoundError):
         st.error("GEMINI_API_KEY nicht in den Streamlit Secrets gefunden.")
         return None
-    
-    # Bereinigte Beweismittel ohne webtech
+
+    # Alle dynamischen Daten werden hier sauber in einem Dictionary gebündelt
     evidence = {
         "Unternehmen": company_name,
-        "Forensische Analyse": infra_data,
+        "Forensische MarTech-Analyse": infra_data,
         "Webseiten-Inhalt": website_text[:15000]
     }
     evidence_json = json.dumps(evidence, indent=2, ensure_ascii=False)
+
 
     prompt_template = """
 Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation und GMP.
@@ -325,7 +330,7 @@ Fokus auf Marketing Tools, Cloud, etc.
     prompt = prompt_template.format(evidence_json)
 
     try:
-        model = genai.GenerativeModel('gemini-flash-latest')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
