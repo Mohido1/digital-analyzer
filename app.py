@@ -9,7 +9,6 @@ import tldextract
 import pyperclip
 
 # --- 1. KONSTANTEN UND KONFIGURATION ---
-
 st.set_page_config(page_title="Universal Forensic Auditor", page_icon="🌐", layout="wide")
 
 TECHNOLOGY_SIGNATURES = {
@@ -23,13 +22,11 @@ TECHNOLOGY_SIGNATURES = {
     "Tealium": {"signatures": [r"tags\.tiqcdn\.com"], "confidence": "high"},
     "Adobe Launch": {"signatures": [r"assets\.adobedtm\.com"], "confidence": "high"},
 }
-
 TAG_MANAGERS = {
     "Google Tag Manager": r"googletagmanager\.com/gtm\.js",
     "Tealium": r"tags\.tiqcdn\.com",
     "Adobe Launch": r"assets\.adobedtm\.com"
 }
-
 BUSINESS_EVENTS = ['purchase', 'add_to_cart', 'begin_checkout', 'form_submission', 'lead', 'sign_up']
 
 # --- 2. KERNLOGIK-FUNKTIONEN (BACKEND) ---
@@ -41,4 +38,35 @@ def analyze_infrastructure(website_url: str):
     
     try:
         response = requests.get(website_url, timeout=15, headers=headers)
-        response.raise
+        response.raise_for_status()
+        html_content = response.text
+    except requests.RequestException as e:
+        st.error(f"Fehler beim Laden der Webseite: {e}")
+        return None
+
+    for name, signature in TAG_MANAGERS.items():
+        if re.search(signature, html_content, re.IGNORECASE):
+            results["tag_management_system"] = name
+            break
+    
+    for tech_name, data in TECHNOLOGY_SIGNATURES.items():
+        for signature in data["signatures"]:
+            match = re.search(signature, html_content, re.IGNORECASE)
+            if match and not any(d['name'] == tech_name for d in results['hardcoded_tools']):
+                results['hardcoded_tools'].append({"name": tech_name, "confidence": data["confidence"], "proof": match.group(0).strip()})
+                break 
+
+    if results["tag_management_system"] == "Google Tag Manager":
+        gtm_match = re.search(r'(GTM-[A-Z0-9]+)', html_content, re.IGNORECASE)
+        if gtm_match:
+            results["gtm_id"] = gtm_match.group(1)
+            gtm_url = f"https://www.googletagmanager.com/gtm.js?id={results['gtm_id']}"
+            try:
+                gtm_response = requests.get(gtm_url, timeout=10, headers=headers)
+                if gtm_response.status_code == 200:
+                    gtm_content = gtm_response.text
+                    for tech_name, data in TECHNOLOGY_SIGNATURES.items():
+                        for signature in data["signatures"]:
+                            match = re.search(signature, gtm_content, re.IGNORECASE)
+                            if match and not any(d['name'] == tech_name for d in results['gtm_tools']):
+                                results["gtm_tools"].append({"name": tech_name, "confidence": data
