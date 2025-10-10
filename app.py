@@ -81,7 +81,6 @@ TAG_MANAGERS = {
     "Ensighten": r"ensighten\.com",
     "Segment": r"cdn\.segment\.com" # Segment kann auch als Tag Manager agieren
 }
-BUSINESS_EVENTS = [# Ersetzen Sie die alte BUSINESS_EVENTS-Liste hiermit
 BUSINESS_EVENTS = [
     # --- E-Commerce & Retail ---
     'purchase',
