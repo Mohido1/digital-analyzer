@@ -69,4 +69,5 @@ def analyze_infrastructure(website_url: str):
                         for signature in data["signatures"]:
                             match = re.search(signature, gtm_content, re.IGNORECASE)
                             if match and not any(d['name'] == tech_name for d in results['gtm_tools']):
-                                results["gtm_tools"].append({"name": tech_name, "confidence": data
+                                results["gtm_tools"].append({"name": tech_name, "confidence": 
+                             data["confidence"], "proof": match.group(0).strip()})
