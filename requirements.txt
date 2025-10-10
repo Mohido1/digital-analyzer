@@ -4,4 +4,4 @@ beautifulsoup4
 google-generativeai
 pyperclip
 tldextract
-wappalyzer-python
+webtech
