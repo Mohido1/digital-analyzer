@@ -369,7 +369,7 @@ if 'infra_data' not in st.session_state:
     st.session_state.infra_data = None
 
 if st.button("Analyse starten", type="primary"):
-    swith st.spinner("Führe universelle forensische Analyse durch... (kann bis zu 90s dauern)"):
+    with st.spinner("Führe universelle forensische Analyse durch... (kann bis zu 90s dauern)"):
         infra_data_result = analyze_infrastructure(url)
         wappalyzer_result = analyze_with_wappalyzer(url)
 
