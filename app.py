@@ -1,26 +1,37 @@
-# TEMPORÄRER DEBUG-CODE ZUM EINFÜGEN
-if st.button("DATEN-SAMMLUNG TESTEN", type="primary"):
-    if not url:
-        st.warning("Bitte geben Sie eine URL ein.")
-    else:
-        if not re.match(r'http(s)?://', url):
-            url = 'https://' + url
+# NEUE VERSION HIER EINFÜGEN
+def generate_audit(infra_data: dict, website_text: str, company_name: str) -> str:
+    """
+    Erstellt den forensischen Audit und nutzt den vorab extrahierten Firmennamen.
+    """
+    prompt = f"""
+Du bist ein Senior Digital Forensics Analyst. Deine Aufgabe ist es, einen unangreifbaren Audit für unser Sales-Team zu erstellen, bei dem jede Kernaussage mit einem Beweis untermauert wird.
 
-        st.info("Führe Datensammlung durch...")
+Beweismittel: {json.dumps(infra_data, indent=2, ensure_ascii=False)}
 
-        # Reset der Session-Daten
-        st.session_state.infra = {}
-        st.session_state.text = ""
+Dein Auftrag: Erstelle einen forensischen Bericht. Halte dich exakt an die folgende Berichtsstruktur.
 
-        # Führe beide Sammel-Funktionen aus
-        infra_data = analyze_infrastructure(url)
-        website_text = scrape_website_text(url)
+**Berichtsstruktur (Markdown):**
 
-        # Zeige die rohen Ergebnisse direkt an
-        st.markdown("---")
-        st.subheader("Beweismittel 1: Ergebnis der Infrastruktur-Analyse (JSON)")
-        st.json(infra_data)
+# Forensischer Digital-Audit (mit Beweisführung)
 
-        st.markdown("---")
-        st.subheader("Beweismittel 2: Extrahierter Webseiten-Text")
-        st.text_area("Gesammelter Text:", website_text, height=400)
+---
+
+## Teil 1: Firmenprofil
+- **Unternehmen:** {company_name}
+- **Kernbotschaft:** [Fasse die Hauptbotschaft oder den Slogan der Webseite in einem Satz zusammen]
+- **Tätigkeit & Branche:** [Beschreibe detailliert, was die Firma macht und in welcher Branche sie tätig ist]
+- **Zielgruppe:** [Leite aus der Sprache und den Angeboten ab, wer die typischen Kunden sind]
+
+---
+
+[... Rest des KI-Prompts bleibt exakt gleich ...]
+"""
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
+        return None
