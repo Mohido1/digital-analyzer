@@ -241,19 +241,19 @@ def scrape_website_text(base_url: str):
     return total_text.strip() if total_text else "Es konnte kein relevanter Text von der Webseite extrahiert werden."
     
 @st.cache_data(ttl=600)
-def analyze_with_wappalyzer(website_url: str):
+def analyze_with_webtech(website_url: str):
     """
-    Analysiert die Webseite mit der Wappalyzer-Bibliothek auf eine breite Palette von Technologien.
+    Analysiert die Webseite mit der WebTech-Bibliothek.
     """
     try:
-        wappalyzer = Wappalyzer.latest()
-        webpage = WebPage.new_from_url(website_url, verify=False) # verify=False, um SSL-Fehler zu ignorieren
-        technologies = wappalyzer.analyze_with_versions(webpage)
-        # Bereinige das Ergebnis für eine bessere Lesbarkeit
-        tech_names = list(technologies.keys())
+        wt = WebTech()
+        results = wt.start_from_url(website_url, timeout=10)
+        # Extrahiere nur die Namen der gefundenen Technologien
+        tech_names = [tech['name'] for tech in results['tech']]
         return tech_names
     except Exception:
-        return [] # Gib eine leere Liste zurück, wenn die Analyse fehlschlägt
+        # Gib bei einem Fehler eine leere Liste zurück
+        return []
 def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
@@ -369,22 +369,32 @@ if 'infra_data' not in st.session_state:
     st.session_state.infra_data = None
 
 if st.button("Analyse starten", type="primary"):
-    with st.spinner("Führe universelle forensische Analyse durch... (kann bis zu 90s dauern)"):
-        infra_data_result = analyze_infrastructure(url)
-        wappalyzer_result = analyze_with_wappalyzer(url)
+    st.session_state.dossier = None
+    st.session_state.infra_data = None
+    if not url or not (url.startswith('http://') or url.startswith('https://')):
+        st.error("Bitte geben Sie eine gültige, vollständige URL ein (z.B. https://www.beispiel.de).")
+    else:
+        infra_data_result = None
+        webtech_result = [] # Variable initialisieren
 
+        with st.spinner("Führe universelle forensische Analyse durch..."):
+            infra_data_result = analyze_infrastructure(url)
+            # Hier wird die neue Funktion aufgerufen
+            webtech_result = analyze_with_webtech(url) 
+        
         if infra_data_result:
             st.session_state.infra_data = infra_data_result
-            # NEU: Wappalyzer-Ergebnisse zu den Beweismitteln hinzufügen
-            st.session_state.infra_data['wappalyzer_technologies'] = wappalyzer_result
-
-            extracted_info = tldextract.extract(url)
-            company_name = extracted_info.domain.capitalize()
-            website_text = scrape_website_text(url)
-            st.session_state.dossier = generate_dossier(st.session_state.infra_data, website_text, company_name)
+            # Die neuen Ergebnisse werden zu den Beweismitteln hinzugefügt
+            st.session_state.infra_data['allgemeine_technologien'] = webtech_result
+            
+            with st.spinner("Extrahiere Webseiten-Inhalte und erstelle KI-Analyse..."):
+                extracted_info = tldextract.extract(url)
+                company_name = extracted_info.domain.capitalize()
+                website_text = scrape_website_text(url)
+                st.session_state.dossier = generate_dossier(st.session_state.infra_data, website_text, company_name)
             st.success("Analyse abgeschlossen!")
         else:
-            st.warning("Die Analyse wurde abgebrochen...")
+            st.warning("Die Analyse wurde abgebrochen, da die Webseite nicht geladen werden konnte oder ein Fehler auftrat.")
 
 if st.session_state.dossier:
     st.markdown("---")
