@@ -112,30 +112,88 @@ def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     evidence_json = json.dumps(evidence, indent=2, ensure_ascii=False)
 
     prompt_template = """
-Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation.
+Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation. Deine Aufgabe ist es, ein strategisches Dossier zu erstellen.
+
 Beweismittel: {}
-Dein Auftrag: Erstelle einen strategischen Bericht basierend auf den Beweismitteln.
+
+Dein Auftrag: Erstelle einen strategischen Bericht. Sei präzise, direkt und begründe jeden Punkt. Halte dich exakt an die folgende Berichtsstruktur.
+
 **Berichtsstruktur (Markdown):**
+
 ### Teil 1: Firmenprofil
 - **Unternehmen:** """ + company_name + """
 - **Kernbotschaft:** [Fasse die Hauptbotschaft der Webseite in einem Satz zusammen]
 - **Tätigkeit & Branche:** [Beschreibe in 2-3 Sätzen, was die Firma macht]
 - **Zielgruppe:** [Leite ab, wer die typischen Kunden sind]
+
 ---
+
 ### Teil 2: Forensischer Digital-Audit
 **Gesamteinschätzung (Executive Summary):**
-[Bewerte die digitale Reife von 1-10 und formuliere eine Management-Zusammenfassung.]
+[Bewerte die digitale Reife von 1-10 und formuliere eine prägnante Management-Zusammenfassung basierend auf den Beweisen. Unterscheide klar zwischen Tools im GTM und hartcodierten Tools.]
+
 ---
-#### Strategische Auswertung & Handlungsbedarf
-**✅ Operative Stärken:**
-* **Stärke:** [Nenne die größte Stärke und begründe sie mit den Beweismitteln.]
-**⚠️ Strategische Risiken (Handlungsbedarf):**
-* **Risiko:** [Nenne die größte Schwäche und das konkrete Geschäftsrisiko.]
+
+#### **Kategorie-Analyse**
+
+**Anweisung:** Bewerte **JEDE** der folgenden 7 Kategorien. Liste für jede Kategorie die gefundenen Tools oder schreibe explizit "**🔴 Lücke:** [Beschreibung der Lücke]", wenn nichts gefunden wurde. Gib für jede Kategorie einen Reifegrad von 1-5 an.
+
+**1. Tag Management & Daten-Grundlage**
+* **Status:** [Bewerte hier das gefundene TMS. z.B. 🟢 Google Tag Manager (Best Practice) oder 🟡 Tealium iQ (Enterprise-Alternative) oder 🔴 Keines (Kritische Lücke)]
+
+**2. Data & Analytics**
+* **Gefundene Tools:** [Liste hier Tools aus dieser Kategorie mit Konfidenz-Emoji 🟢/🟡]
+* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Es wird keine Web-Analyse betrieben, um das Nutzerverhalten zu verstehen."]
+* **Reifegrad (1-5):**
+
+**3. Advertising & Performance Marketing**
+* **Gefundene Tools:** [...]
+* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Es findet kein Retargeting oder Conversion-Tracking für Werbekampagnen statt."]
+* **Reifegrad (1-5):**
+
+**4. DSP & Programmatic Advertising**
+* **Gefundene Tools:** [...]
+* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Das Unternehmen nutzt keine programmatischen Werbeplattformen für eine skalierte Reichweite."]
+* **Reifegrad (1-5):**
+
+**5. Marketing Automation & CRM**
+* **Gefundene Tools:** [...]
+* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Prozesse zur Lead-Generierung und -Pflege sind nicht automatisiert."]
+* **Reifegrad (1-5):**
+
+**6. Customer Experience & Personalisierung (CRO)**
+* **Gefundene Tools:** [...]
+* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "**🔴 Lücke:** Die Webseite wird nicht aktiv optimiert (z.B. durch A/B-Tests oder Heatmaps)."]
+* **Reifegrad (1-5):**
+
+**7. Cloud-Nutzung & Infrastruktur**
+* **Gefundene Tools:** [...]
+* **Status:** [Wenn keine Tools gefunden wurden, schreibe: "Keine direkten Signale für eine spezifische Public-Cloud-Nutzung im Frontend erkannt."]
+* **Reifegrad (1-5):**
+
 ---
-#### Empfohlener Strategischer Fahrplan
-**🚀 Unser strategischer Vorschlag (Phasenplan):**
-* **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt.]
-* **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
+
+#### **Strategische Auswertung für das Kundengespräch**
+
+**✅ Stärken (Was gut läuft und warum):**
+
+* **Stärke 1:** [Nenne die größte Stärke]
+    * **Beobachtung:** [Beschreibe den technischen Fakt.]
+    * **Bedeutung (Intern):** [Erkläre die strategische Bedeutung.]
+    * **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+
+**⚠️ Schwächen (Wo das größte Potenzial liegt):**
+
+* **Schwäche 1:** [Nenne die größte Schwäche]
+    * **Beobachtung:** [Beschreibe den technischen Fakt oder die Lücke.]
+    * **Konkretes Geschäftsrisiko:** [Erkläre das daraus resultierende Geschäftsproblem.]
+    * **Erläuterung für den Kunden:** [Formuliere eine einfache Analogie.]
+
+**🚀 Top-Empfehlung (Unser konkreter Vorschlag):**
+
+* **Problem:** [Fasse die größte Schwäche in einem Satz als klares Geschäftsproblem zusammen.]
+* **Lösung:** [Beschreibe die konkrete Google-Lösung (z.B. aus dem GMP oder Google Cloud Portfolio).]
+* **Ihr Mehrwert:** [Liste 2-3 klare Vorteile für den Kunden auf (z.B. "Präzisere Erfolgsmessung", "Effizienteres Marketing", "Zukunftssicherheit").]
 """
     
     prompt = prompt_template.format(evidence_json)
