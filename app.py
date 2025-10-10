@@ -241,7 +241,7 @@ def scrape_website_text(base_url: str):
     
 @st.cache_data(ttl=600)
 
-ef generate_dossier(infra_data: dict, website_text: str, company_name: str):
+def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     """
     Erstellt den forensischen Audit mit Beweisführung mithilfe der Gemini API.
     Diese Version nutzt eine saubere und robuste Methode zur Prompt-Erstellung.
