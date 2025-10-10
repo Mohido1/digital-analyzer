@@ -3,4 +3,4 @@ requests
 beautifulsoup4
 google-generativeai
 pyperclip
-tldextract 
+tldextract
