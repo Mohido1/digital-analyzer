@@ -339,11 +339,11 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
 """
 prompt = prompt_template.format(evidence_json)
 
-try:
+    try:
         model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         return response.text
-except Exception as e:
+    except Exception as e:
         st.error(f"Fehler bei der Kommunikation mit der Gemini API: {e}")
         return None
 
