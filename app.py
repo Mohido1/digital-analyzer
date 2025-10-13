@@ -286,11 +286,11 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
 
 ---
 ### **Teil 2: Technologisches Fundament**
-**Anweisung:** Erstelle eine Übersicht der wichtigsten erkannten Technologien.
-* **Content Management / Shop-System:** [Nenne das relevante Tool. Wenn keines, schreibe "Unbekannt".]
-* **Marketing Automation & CRM:** [Nenne das relevante Tool.]
-* **Analytics & User Experience:** [Nenne das relevante Tool.]
-* **Advertising & Performance:** [Nenne das relevante Tool.]
+**Anweisung:** Erstelle eine Übersicht ALLER erkannten Technologien.
+* **Content Management / Shop-System:** [Nenne die Tools. Wenn keines, schreibe "Unbekannt".]
+* **Marketing Automation & CRM:** [Nenne die Tools.]
+* **Analytics & User Experience:** [Nenne die Tools.]
+* **Advertising & Performance:** [Nenne die Tools.]
 
 ---
 ### **Teil 3: Forensischer Digital-Audit**
@@ -301,7 +301,7 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
 #### **Detaillierte Kategorie-Analyse**
 **Anweisung:** Bewerte JEDE der folgenden Kategorien.
 **1. Tag Management & Daten-Grundlage**
-* **Status:** [Bewerte hier das gefundene TMS.]
+* **Status:** [Bewerte hier ALLE gefundenen TMS.]
 
 **2. Data & Analytics**
 * **Status & Implikation:** [Bewerte die Situation. Wenn keine Tools gefunden wurden, schreibe: "**Lücke:** Es wird keine Web-Analyse betrieben."]
@@ -312,17 +312,17 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
 * **Reifegrad (1-5):**
 
 ---
-### **Teil 4: Strategische Auswertung für das Kundengespräch**
+### **Teil 4: Strategische Auswertung**
 **Stärken (Was gut läuft und warum):**
 * **Stärke:** [Nenne die größte Stärke]
     * **Beobachtung:** [Beschreibe den technischen Fakt.]
     * **Beweis (Code-Snippet):** [Füge den "proof"-Schnipsel ein.]
     * **Bedeutung (Intern):** [Erkläre die strategische Bedeutung.]
-    * **Erläuterung für den Kunden:** [Formuliere eine Analogie.]
+   
 
 **Schwächen (Wo das größte Potenzial liegt):**
 * **Schwäche:** [Nenne die größte Schwäche]
-    * **Beobachtung:** [Beschreibe den technischen Fakt oder die Lücke.]
+    * **Beobachtung:** [Beschreibe den technischen Fakt oder die Lücken.]
     * **Beweis:** [Gib den Beweis an.]
     * **Konkretes Geschäftsrisiko:** [Erkläre das Geschäftsproblem.]
     * **Erläuterung für den Kunden:** [Formuliere eine Analogie.]
