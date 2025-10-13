@@ -257,13 +257,12 @@ def generate_dossier(infra_data: dict, website_text: str, company_name: str):
     evidence = {
         "Unternehmen": company_name,
         "Forensische MarTech-Analyse": infra_data,
-        "Webseiten-Inhalt": website_text[:15000]
+        "Webseiten-Inhalt": website_text[:30000]
     }
-    
-    # Der Prompt wird als saubere f-string Vorlage erstellt
-    prompt = f"""
-"""
-"""
+    evidence_json = json.dumps(evidence, indent=2, ensure_ascii=False)
+
+    prompt_template = """
+
 Du bist ein Partner bei einer Top-Management-Beratung (z.B. McKinsey, BCG) mit Spezialisierung auf digitale Transformation und GMP.
 Beweismittel: {}
 
@@ -339,8 +338,6 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
 """
 
     prompt = prompt_template.format(evidence_json)
-
-    # LÖSCHEN SIE ALLES UNTER DIESER ZEILE UND ERSETZEN SIE ES MIT DEM FOLGENDEN BLOCK
 
     try:
         model = genai.GenerativeModel('gemini-flash-latest')
