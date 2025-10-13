@@ -340,7 +340,7 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
     prompt = prompt_template.format(evidence_json)
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
