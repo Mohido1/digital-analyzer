@@ -337,7 +337,10 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
 * **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt.]
 * **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
 """
-prompt = prompt_template.format(evidence_json)
+
+    prompt = prompt_template.format(evidence_json)
+
+    # LÖSCHEN SIE ALLES UNTER DIESER ZEILE UND ERSETZEN SIE ES MIT DEM FOLGENDEN BLOCK
 
     try:
         model = genai.GenerativeModel('gemini-flash-latest')
