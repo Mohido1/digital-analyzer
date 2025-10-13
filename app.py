@@ -13,66 +13,73 @@ st.set_page_config(page_title="Universal Forensic Auditor", page_icon="🌐", la
 
 TECHNOLOGY_SIGNATURES = {
     # Analytics & Tracking
-    "Google Analytics 4": {"signatures": [r"G-[A-Z0-9]+"], "confidence": "high"},
+    "Google Analytics 4": {"signatures": [r"G-[A-Z0-9]{6,}"], "confidence": "high"},
     "Google Analytics (Universal)": {"signatures": [r"UA-\d+-\d+"], "confidence": "high"},
-    "Adobe Analytics": {"signatures": ["s_code.js", "AppMeasurement.js"], "confidence": "high"},
-    "Matomo / Piwik": {"signatures": ["matomo.js", "piwik.js", "_paq.push"], "confidence": "high"},
-    "Plausible Analytics": {"signatures": ["plausible.io/js/plausible.js"], "confidence": "high"},
+    "Adobe Analytics": {"signatures": [r"s_code\.js", r"AppMeasurement\.js"], "confidence": "high"},
+    "Matomo / Piwik": {"signatures": [r"matomo\.js", r"piwik\.js", r"_paq\.push"], "confidence": "high"},
+    "Plausible Analytics": {"signatures": [r"plausible\.io/js/plausible\.js"], "confidence": "high"},
+    "Mixpanel": {"signatures": [r"mixpanel-"], "confidence": "high"},
+    "Amplitude": {"signatures": [r"amplitude\.com"], "confidence": "high"},
 
     # Advertising & Retargeting
     "Google Ads": {"signatures": [r"AW-\d+", r"google_ad_conversion_id"], "confidence": "high"},
-    "Google Marketing Platform (Floodlight)": {"signatures": ["fls.doubleclick.net", "doubleclick.net/activity"], "confidence": "high"},
-    "Meta Pixel": {"signatures": [r"fbq\('init'"], "confidence": "high"},
-    "LinkedIn Insight Tag": {"signatures": [r"linkedin_data_partner_id"], "confidence": "high"},
-    "Twitter Ads": {"signatures": [r"twq\('init'", "static.ads-twitter.com"], "confidence": "high"},
+    "Google Marketing Platform (Floodlight)": {"signatures": [r"fls\.doubleclick\.net", r"doubleclick\.net/activityi"], "confidence": "high"},
+    "Meta Pixel": {"signatures": [r"fbq\('init'", r"facebook\.com/tr", r"_fbevents"], "confidence": "high"},
+    "LinkedIn Insight Tag": {"signatures": [r"linkedin_data_partner_id", r"licdn\.com/insight\.min\.js"], "confidence": "high"},
+    "Twitter Ads": {"signatures": [r"twq\('init'", r"static\.ads-twitter\.com"], "confidence": "high"},
     "Pinterest Tag": {"signatures": [r"pintrk\('init'"], "confidence": "high"},
-    "TikTok Pixel": {"signatures": ["tiktok-pc-analytics", r"ttq\('init'"], "confidence": "high"},
-    "Microsoft Advertising (Bing)": {"signatures": ["bat.bing.com"], "confidence": "high"},
-    "Criteo": {"signatures": ["criteo_id", "static.criteo.net"], "confidence": "high"},
-    "AdRoll": {"signatures": ["adroll_adv_id"], "confidence": "high"},
-    "Taboola": {"signatures": ["trc.taboola.com"], "confidence": "high"},
-    "Outbrain": {"signatures": ["outbrain.com/pixel"], "confidence": "high"},
+    "TikTok Pixel": {"signatures": [r"tiktok-pc-analytics", r"ttq\('init'"], "confidence": "high"},
+    "Microsoft Advertising (Bing)": {"signatures": [r"bat\.bing\.com"], "confidence": "high"},
+    "Criteo": {"signatures": [r"criteo_id", r"static\.criteo\.net"], "confidence": "high"},
+    "Taboola": {"signatures": [r"trc\.taboola\.com"], "confidence": "high"},
+    "Outbrain": {"signatures": [r"outbrain\.com/pixel"], "confidence": "high"},
 
-    # DSPs & Programmatic
-    "The Trade Desk": {"signatures": ["insight.adsrvr.org"], "confidence": "high"},
-    "Xandr (AppNexus)": {"signatures": ["anj.adnxs.com", "ib.adnxs.com"], "confidence": "high"},
-    "MediaMath": {"signatures": ["mathads.com"], "confidence": "high"},
-    "Adform": {"signatures": ["track.adform.net"], "confidence": "high"},
+    # Affiliate Marketing
+    "Impact Radius": {"signatures": [r"impact\.com"], "confidence": "high"},
+    "Commission Junction (CJ)": {"signatures": [r"cjevent\.com"], "confidence": "high"},
+    "Awin": {"signatures": [r"awin1\.com"], "confidence": "high"},
+    "ShareASale": {"signatures": [r"shareasale\.com"], "confidence": "high"},
 
-    # Customer Experience & CRO
-    "Hotjar": {"signatures": [r"hj\('event'", "static.hotjar.com"], "confidence": "high"},
-    "Microsoft Clarity": {"signatures": ["clarity.ms"], "confidence": "high"},
-    "FullStory": {"signatures": ["fullstory.com/fs.js"], "confidence": "high"},
-    "Optimizely": {"signatures": ["optimizely.com/js"], "confidence": "high"},
-    "Visual Website Optimizer (VWO)": {"signatures": ["dev.vwo.com"], "confidence": "high"},
-    "Google Optimize": {"signatures": [r"GTM-[A-Z0-9]+", "optimize.js"], "confidence": "high"}, # Often linked to GTM
+    # Customer Experience, CRO & Personalisierung
+    "Hotjar": {"signatures": [r"hj\('event'", r"static\.hotjar\.com", r"window\.hj"], "confidence": "high"},
+    "Microsoft Clarity": {"signatures": [r"clarity\.ms"], "confidence": "high"},
+    "FullStory": {"signatures": [r"fullstory\.com/fs\.js"], "confidence": "high"},
+    "Optimizely": {"signatures": [r"optimizely\.com/js", r"Optimizely\.push"], "confidence": "high"},
+    "VWO (Visual Website Optimizer)": {"signatures": [r"dev\.vwo\.com"], "confidence": "high"},
+    "Google Optimize": {"signatures": [r"optimize\.js"], "confidence": "high"},
+    "AB Tasty": {"signatures": [r"try\.abtasty\.com"], "confidence": "high"},
 
-    # Marketing Automation & CRM
+    # Marketing Automation, CRM & Live Chat
     "HubSpot": {"signatures": [r"js\.hs-scripts\.com", r"_hsq\.push"], "confidence": "high"},
-    "Salesforce Pardot": {"signatures": ["pi.pardot.com"], "confidence": "high"},
-    "Marketo": {"signatures": ["munchkin.js", "Munchkin.init"], "confidence": "high"},
-    "ActiveCampaign": {"signatures": ["ac_track.js"], "confidence": "high"},
-    "Intercom": {"signatures": ["widget.intercom.io"], "confidence": "high"},
+    "Salesforce Pardot": {"signatures": [r"pi\.pardot\.com"], "confidence": "high"},
+    "Marketo": {"signatures": [r"munchkin\.js", r"Munchkin\.init"], "confidence": "high"},
+    "ActiveCampaign": {"signatures": [r"ac_track\.js"], "confidence": "high"},
+    "Intercom": {"signatures": [r"widget\.intercom\.io"], "confidence": "high"},
+    "Drift": {"signatures": [r"js\.driftt\.com"], "confidence": "high"},
+    "Zendesk Chat": {"signatures": [r"v2\.zopim\.com"], "confidence": "high"},
+
+    # Social Proof & Reviews
+    "Trustpilot": {"signatures": [r"widget\.trustpilot\.com"], "confidence": "high"},
+    "Reviews.io": {"signatures": [r"widget\.reviews\.io"], "confidence": "high"},
 
     # Consent Management Platforms (CMP)
-    "Cookiebot": {"signatures": ["consent.cookiebot.com", "Cybot"], "confidence": "high"},
-    "Usercentrics": {"signatures": ["app.usercentrics.eu"], "confidence": "high"},
-    "OneTrust": {"signatures": ["cdn.cookielaw.org", "OneTrust.js"], "confidence": "high"},
+    "Cookiebot": {"signatures": [r"consent\.cookiebot\.com", r"Cybot"], "confidence": "high"},
+    "Usercentrics": {"signatures": [r"app\.usercentrics\.eu"], "confidence": "high"},
+    "OneTrust": {"signatures": [r"cdn\.cookielaw\.org", r"optanon\.blob\.core\.windows\.net"], "confidence": "high"},
 
-    # E-Commerce Platforms
-    "Shopify": {"signatures": ["Shopify.theme", "cdn.shopify.com"], "confidence": "high"},
-    "Magento": {"signatures": ["mage-init", "Magento_Theme"], "confidence": "high"},
-    "WooCommerce": {"signatures": ["/wp-content/plugins/woocommerce"], "confidence": "high"},
+    # E-Commerce & andere TMS
+    "Shopify": {"signatures": [r"Shopify\.theme", r"cdn\.shopify\.com"], "confidence": "high"},
+    "Magento": {"signatures": [r"mage-init"], "confidence": "high"},
+    "WooCommerce": {"signatures": [r"/wp-content/plugins/woocommerce"], "confidence": "high"},
+    "Segment": {"signatures": [r"cdn\.segment\.com"], "confidence": "high"},
+    "Tealium": {"signatures": [r"tags\.tiqcdn\.com"], "confidence": "high"},
+    "Adobe Launch": {"signatures": [r"assets\.adobedtm\.com"], "confidence": "high"},
 
-    # Customer Data Platforms (CDP)
-    "Segment": {"signatures": ["cdn.segment.com"], "confidence": "high"},
-    # Tealium wird bereits durch den Tag Manager erkannt
-
-    # Cloud & Content Delivery (generische Signale)
-    "Amazon Web Services (AWS)": {"signatures": ["amazonaws.com"], "confidence": "medium"},
-    "Google Cloud Platform (GCP)": {"signatures": ["storage.googleapis.com"], "confidence": "medium"},
-    "Cloudflare": {"signatures": ["cdn-cgi/scripts"], "confidence": "medium"},
-    "Microsoft Azure": {"signatures": ["azureedge.net"], "confidence": "medium"},
+    # Cloud & Content Delivery
+    "Amazon Web Services (AWS)": {"signatures": [r"amazonaws\.com"], "confidence": "medium"},
+    "Google Cloud Platform (GCP)": {"signatures": [r"storage\.googleapis\.com"], "confidence": "medium"},
+    "Cloudflare": {"signatures": [r"cdn-cgi/scripts"], "confidence": "medium"},
+    "Microsoft Azure": {"signatures": [r"azureedge\.net"], "confidence": "medium"},
 }
 TAG_MANAGERS = {
     "Google Tag Manager": r"googletagmanager\.com/gtm\.js",
@@ -81,63 +88,31 @@ TAG_MANAGERS = {
     "Ensighten": r"ensighten\.com",
     "Segment": r"cdn\.segment\.com" # Segment kann auch als Tag Manager agieren
 }
+# ERSETZEN SIE DIE ALTE BUSINESS_EVENTS-LISTE MIT DIESER
 BUSINESS_EVENTS = [
     # --- E-Commerce & Retail ---
-    'purchase',
-    'add_to_cart',
-    'remove_from_cart',
-    'begin_checkout',
-    'add_payment_info',
-    'add_shipping_info',
-    'view_item',
-    'view_item_list',
-    'select_item',
-    'add_to_wishlist',
-    'view_cart',
-    'refund',
-    'view_promotion',
-    'select_promotion',
+    'purchase', 'add_to_cart', 'remove_from_cart', 'begin_checkout',
+    'add_payment_info', 'add_shipping_info', 'view_item', 'view_item_list',
+    'select_item', 'add_to_wishlist', 'view_cart', 'refund',
+    'view_promotion', 'select_promotion', 'product_impression', 'checkout_progress',
 
     # --- Lead Generation & B2B ---
-    'generate_lead', # GA4 Standard
-    'form_submission',
-    'lead',
-    'sign_up',
-    'request_quote',
-    'schedule_demo',
-    'contact',
-    'trial_start',
-    'download',
-    'file_download',
-    'submit_form',
+    'generate_lead', 'form_submission', 'lead', 'sign_up',
+    'request_quote', 'schedule_demo', 'contact', 'trial_start', 'download',
+    'file_download', 'submit_form', 'get_directions', 'call_now_button',
 
     # --- SaaS & Subscription ---
-    'subscribe',
-    'unsubscribe',
-    'subscription_start',
-    'subscription_cancel',
-    'login',
-    'logout',
-    'upgrade_plan',
-    'downgrade_plan',
-    'feature_use',
+    'subscribe', 'unsubscribe', 'subscription_start', 'subscription_cancel',
+    'login', 'logout', 'upgrade_plan', 'downgrade_plan', 'feature_use',
+    'register', 'tutorial_begin', 'tutorial_complete',
 
     # --- Allgemeines User Engagement ---
-    'search',
-    'share',
-    'click',
-    'view_search_results',
-    'video_start',
-    'video_progress',
-    'video_complete',
-    'scroll_depth',
-    'page_view', # Obwohl implizit, explizit suchen kann wertvoll sein
+    'search', 'share', 'click', 'view_search_results', 'video_start',
+    'video_progress', 'video_complete', 'scroll_depth', 'page_view',
+    'element_visibility', ' outbound_link_click', 'internal_link_click',
 
     # --- Travel & Hospitality ---
-    'search_flight',
-    'search_hotel',
-    'select_room',
-    'book_trip',
+    'search_flight', 'search_hotel', 'select_room', 'book_trip', 'view_location',
 ]
 # --- 2. KERNLOGIK-FUNKTIONEN (BACKEND) ---
 
@@ -335,6 +310,8 @@ Integriere diese abgeleiteten Tools in deine Kategorie-Analyse und markiere sie 
 **Unser strategischer Vorschlag (Phasenplan):**
 * **Phase 1: Fundament schaffen (1-3 Monate):** [Beschreibe den wichtigsten ersten Schritt.]
 * **Phase 2: Potenzial entfalten (3-9 Monate):** [Beschreibe den nächsten logischen Schritt.]
+
+Am Ende sollen ausnahmslos ALLE erkannten Tools zu sehen sein. Alles was durch den gtm.js gefunden wurde.
 """
 
     prompt = prompt_template.format(evidence_json)
