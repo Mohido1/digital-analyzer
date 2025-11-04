@@ -4,15 +4,15 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 import json
 import re
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, quote_plus
 from datetime import datetime
 import sqlite3
 import pandas as pd
 import time
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 try:
@@ -22,638 +22,522 @@ except ImportError:
     WHOIS_AVAILABLE = False
 
 # ==================== CONFIG ====================
-st.set_page_config(page_title="MarTech Analyzer Pro", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="MarTech Analyzer Pro v4.0", page_icon="🎯", layout="wide")
 PRIMARY_COLOR = "#174f78"
-SECONDARY_COLOR = "#a1acbd"
 ACCENT_COLOR = "#ffab40"
 
 st.markdown(f"""<style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
 html, body, [class*="css"] {{ font-family: 'Montserrat', sans-serif; font-size: 14px; }}
 .main-header {{ background: linear-gradient(135deg, {PRIMARY_COLOR} 0%, #1a5f8a 100%); padding: 2rem; border-radius: 10px; color: white; margin-bottom: 2rem; }}
-.score-card {{ background: white; border-left: 5px solid {PRIMARY_COLOR}; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 1rem; }}
 .metric-card {{ background: linear-gradient(135deg, {PRIMARY_COLOR} 0%, #2a6f98 100%); color: white; padding: 1.5rem; border-radius: 8px; text-align: center; }}
-.success-card {{ background: #d4edda; border-left: 5px solid #28a745; padding: 1rem; border-radius: 8px; margin: 1rem 0; }}
-.stButton>button {{ background-color: {PRIMARY_COLOR}; color: white; border-radius: 8px; padding: 0.75rem 2rem; font-weight: 600; }}
+.insight-card {{ background: white; border-left: 5px solid {ACCENT_COLOR}; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 1rem; }}
 </style>""", unsafe_allow_html=True)
 
 # ==================== DATABASE ====================
 def init_db():
-    conn = sqlite3.connect('martech.db')
+    conn = sqlite3.connect('martech_pro.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS analyses (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT, domain TEXT, 
-                 timestamp TEXT, overall_score INTEGER, maturity_level TEXT, category_scores TEXT, detected_tools TEXT, 
-                 recommendations TEXT, raw_data TEXT, performance_score INTEGER, security_grade TEXT, company_size TEXT, domain_age REAL)''')
+                 timestamp TEXT, overall_score INTEGER, raw_data TEXT, gtm_analysis TEXT, company_data TEXT)''')
     conn.commit()
     conn.close()
 
-def save_analysis(url, domain, score, maturity, cat_scores, tools, recs, raw, perf=None, sec=None, size=None, age=None):
-    conn = sqlite3.connect('martech.db')
+def save_analysis(url, domain, score, raw, gtm_data, company_data):
+    conn = sqlite3.connect('martech_pro.db')
     c = conn.cursor()
-    c.execute('''INSERT INTO analyses (url, domain, timestamp, overall_score, maturity_level, category_scores, 
-                 detected_tools, recommendations, raw_data, performance_score, security_grade, company_size, domain_age)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-              (url, domain, datetime.now().isoformat(), score, maturity, json.dumps(cat_scores), 
-               json.dumps(tools), json.dumps(recs), json.dumps(raw), perf, sec, size, age))
+    c.execute('INSERT INTO analyses (url, domain, timestamp, overall_score, raw_data, gtm_analysis, company_data) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              (url, domain, datetime.now().isoformat(), score, json.dumps(raw), json.dumps(gtm_data), json.dumps(company_data)))
     conn.commit()
     conn.close()
 
-def get_history(limit=10):
-    conn = sqlite3.connect('martech.db')
-    c = conn.cursor()
-    c.execute('SELECT id, url, domain, timestamp, overall_score, maturity_level, performance_score, security_grade FROM analyses ORDER BY timestamp DESC LIMIT ?', (limit,))
-    results = c.fetchall()
-    conn.close()
-    return results
-
-def get_by_id(aid):
-    conn = sqlite3.connect('martech.db')
-    c = conn.cursor()
-    c.execute('SELECT * FROM analyses WHERE id = ?', (aid,))
-    result = c.fetchone()
-    conn.close()
-    return result
-
-# ==================== TECH SIGNATURES ====================
-TECH_SIGS = {
-    "analytics": {"weight": 0.18, "name": "Analytics & Data", "tools": {
-        "Google Analytics 4": {"score": 10, "patterns": [r"G-[A-Z0-9]{10,}", r"gtag.*config.*G-", r"gtag/js"], "critical": True, "gmp": False},
-        "Google Analytics Universal": {"score": 6, "patterns": [r"UA-\d+-\d+", r"analytics\.js"], "critical": True, "gmp": False},
-        "Adobe Analytics": {"score": 9, "patterns": [r"s_code\.js", r"AppMeasurement", r"omniture", r"s\.t\(\)"], "critical": True, "gmp": False},
-        "Matomo": {"score": 8, "patterns": [r"matomo\.js", r"_paq\.push", r"piwik"], "critical": False, "gmp": False},
-        "Mixpanel": {"score": 7, "patterns": [r"mixpanel", r"mp_"], "critical": False, "gmp": False},
-        "Amplitude": {"score": 7, "patterns": [r"amplitude\.com", r"amplitude\.getInstance"], "critical": False, "gmp": False},
-        "Heap Analytics": {"score": 7, "patterns": [r"heap\.load", r"heapanalytics"], "critical": False, "gmp": False}}},
-    "advertising": {"weight": 0.22, "name": "Advertising & Performance", "tools": {
-        "Google Ads": {"score": 9, "patterns": [r"AW-\d+", r"google_conversion_id", r"googleadservices"], "critical": True, "gmp": False},
-        "Campaign Manager 360": {"score": 10, "patterns": [r"fls\.doubleclick\.net", r"doubleclick\.net/activityi", r"2mdn\.net"], "critical": True, "gmp": True},
-        "Display & Video 360": {"score": 10, "patterns": [r"display\.doubleclick", r"dbm\.doubleclick"], "critical": True, "gmp": True},
-        "Search Ads 360": {"score": 9, "patterns": [r"sa360", r"searchads360"], "critical": False, "gmp": True},
-        "Meta Pixel": {"score": 9, "patterns": [r"fbq\(", r"facebook\.com/tr", r"_fbp", r"connect\.facebook\.net"], "critical": True, "gmp": False},
-        "Meta CAPI": {"score": 10, "patterns": [r"graph\.facebook\.com.*events"], "critical": True, "gmp": False},
-        "LinkedIn Insight Tag": {"score": 8, "patterns": [r"linkedin_data_partner_id", r"snap\.licdn\.com", r"_linkedin_partner_id"], "critical": True, "gmp": False},
-        "TikTok Pixel": {"score": 7, "patterns": [r"tiktok.*analytics", r"ttq\(", r"analytics\.tiktok"], "critical": False, "gmp": False},
-        "Twitter/X Ads": {"score": 6, "patterns": [r"static\.ads-twitter\.com", r"twq\("], "critical": False, "gmp": False},
-        "Pinterest Tag": {"score": 6, "patterns": [r"pintrk\(", r"ct\.pinterest\.com"], "critical": False, "gmp": False},
-        "Snapchat Pixel": {"score": 6, "patterns": [r"snaptr\(", r"sc-static\.net"], "critical": False, "gmp": False},
-        "Reddit Pixel": {"score": 6, "patterns": [r"rdt\(", r"redditpixel"], "critical": False, "gmp": False}}},
-    "tagManagement": {"weight": 0.15, "name": "Tag Management", "tools": {
-        "Google Tag Manager": {"score": 10, "patterns": [r"GTM-[A-Z0-9]+", r"googletagmanager\.com/gtm"], "critical": True, "gmp": False},
-        "Adobe Launch": {"score": 9, "patterns": [r"assets\.adobedtm\.com", r"launch-[a-z0-9]+\.min\.js"], "critical": True, "gmp": False},
-        "Tealium": {"score": 9, "patterns": [r"tags\.tiqcdn\.com", r"utag\.js"], "critical": False, "gmp": False},
-        "Segment": {"score": 8, "patterns": [r"cdn\.segment\.com", r"analytics\.js", r"segment\.io"], "critical": False, "gmp": False},
-        "Ensighten": {"score": 8, "patterns": [r"nexus\.ensighten\.com"], "critical": False, "gmp": False}}},
-    "cro": {"weight": 0.13, "name": "CRO & User Experience", "tools": {
-        "Hotjar": {"score": 8, "patterns": [r"static\.hotjar\.com", r"window\.hj", r"hjid"], "critical": False, "gmp": False},
-        "Microsoft Clarity": {"score": 7, "patterns": [r"clarity\.ms", r"c\.clarity\.ms"], "critical": False, "gmp": False},
-        "Optimizely": {"score": 9, "patterns": [r"optimizely\.com", r"cdn\.optimizely"], "critical": False, "gmp": False},
-        "VWO": {"score": 8, "patterns": [r"dev\.vwo\.com", r"_vwo"], "critical": False, "gmp": False},
-        "Google Optimize": {"score": 7, "patterns": [r"optimize\.js", r"google-optimize"], "critical": False, "gmp": False},
-        "FullStory": {"score": 8, "patterns": [r"fullstory\.com", r"fs\.identify"], "critical": False, "gmp": False},
-        "Lucky Orange": {"score": 6, "patterns": [r"luckyorange\.com"], "critical": False, "gmp": False},
-        "Crazy Egg": {"score": 6, "patterns": [r"crazyegg\.com"], "critical": False, "gmp": False}}},
-    "crm": {"weight": 0.14, "name": "CRM & Marketing Automation", "tools": {
-        "HubSpot": {"score": 9, "patterns": [r"js\.hs-scripts\.com", r"_hsq", r"hubspot"], "critical": True, "gmp": False},
-        "Salesforce": {"score": 10, "patterns": [r"salesforce\.com", r"pi\.pardot", r"my\.salesforce"], "critical": True, "gmp": False},
-        "Marketo": {"score": 9, "patterns": [r"munchkin\.js", r"Munchkin\.init", r"mktoforms2"], "critical": True, "gmp": False},
-        "Intercom": {"score": 8, "patterns": [r"widget\.intercom\.io", r"intercomSettings"], "critical": False, "gmp": False},
-        "Drift": {"score": 7, "patterns": [r"js\.driftt\.com", r"drift\.load"], "critical": False, "gmp": False},
-        "ActiveCampaign": {"score": 7, "patterns": [r"ac_track\.js", r"trackcmp\.net"], "critical": False, "gmp": False},
-        "Mailchimp": {"score": 6, "patterns": [r"list-manage\.com", r"mcjs"], "critical": False, "gmp": False},
-        "Klaviyo": {"score": 8, "patterns": [r"static\.klaviyo\.com", r"klaviyo\.js"], "critical": False, "gmp": False},
-        "Customer.io": {"score": 7, "patterns": [r"customer\.io", r"_cio"], "critical": False, "gmp": False}}},
-    "consent": {"weight": 0.12, "name": "Consent & Privacy", "tools": {
-        "Cookiebot": {"score": 9, "patterns": [r"consent\.cookiebot", r"Cybot", r"CookieConsent"], "critical": True, "gmp": False},
-        "OneTrust": {"score": 10, "patterns": [r"cdn\.cookielaw\.org", r"optanon", r"OneTrust"], "critical": True, "gmp": False},
-        "Usercentrics": {"score": 8, "patterns": [r"app\.usercentrics", r"uc\.js"], "critical": False, "gmp": False},
-        "Termly": {"score": 7, "patterns": [r"termly\.io"], "critical": False, "gmp": False},
-        "Quantcast": {"score": 7, "patterns": [r"quantserve\.com", r"__qca"], "critical": False, "gmp": False},
-        "TrustArc": {"score": 8, "patterns": [r"trustarc\.com", r"consent-pref"], "critical": False, "gmp": False}}},
-    "ecommerce": {"weight": 0.06, "name": "E-Commerce Platforms", "tools": {
-        "Shopify": {"score": 9, "patterns": [r"cdn\.shopify\.com", r"Shopify\.theme", r"myshopify\.com"], "critical": True, "gmp": False},
-        "WooCommerce": {"score": 7, "patterns": [r"wp-content/plugins/woocommerce", r"woocommerce"], "critical": False, "gmp": False},
-        "Magento": {"score": 8, "patterns": [r"mage-init", r"Magento_"], "critical": False, "gmp": False},
-        "BigCommerce": {"score": 7, "patterns": [r"bigcommerce\.com"], "critical": False, "gmp": False},
-        "Salesforce Commerce Cloud": {"score": 9, "patterns": [r"demandware\.net"], "critical": False, "gmp": False}}}
-}
-
-# Zusätzliche Deep-Dive Checks
-ADVANCED_CHECKS = {
-    "data_layer": {
-        "name": "DataLayer Implementation",
-        "patterns": [r"dataLayer\.push", r"window\.dataLayer", r"dataLayer\s*="],
-        "score_impact": 15,
-        "category": "tagManagement"
-    },
-    "server_side_tracking": {
-        "name": "Server-Side Tracking (GTM SS)",
-        "patterns": [r"sgtm\.", r"server-side", r"\.run\.app"],
-        "score_impact": 20,
-        "category": "tagManagement"
-    },
-    "enhanced_ecommerce": {
-        "name": "Enhanced E-Commerce Tracking",
-        "patterns": [r"ecommerce\.", r"purchase", r"checkout", r"impressions"],
-        "score_impact": 15,
-        "category": "ecommerce"
-    },
-    "cross_domain_tracking": {
-        "name": "Cross-Domain Tracking",
-        "patterns": [r"linker", r"allowLinker", r"_gac_"],
-        "score_impact": 10,
-        "category": "analytics"
-    },
-    "user_id_tracking": {
-        "name": "User-ID Tracking",
-        "patterns": [r"user_id", r"userId", r"setUserId"],
-        "score_impact": 12,
-        "category": "analytics"
-    },
-    "custom_dimensions": {
-        "name": "Custom Dimensions/Events",
-        "patterns": [r"dimension\d+", r"metric\d+", r"customDimension"],
-        "score_impact": 8,
-        "category": "analytics"
-    },
-    "ab_testing": {
-        "name": "A/B Testing Active",
-        "patterns": [r"experiment", r"variation", r"vwo_", r"optly"],
-        "score_impact": 12,
-        "category": "cro"
-    },
-    "heatmap_tracking": {
-        "name": "Heatmap/Session Recording",
-        "patterns": [r"heatmap", r"recording", r"replay", r"session"],
-        "score_impact": 10,
-        "category": "cro"
-    },
-    "event_tracking": {
-        "name": "Event Tracking Implementation",
-        "patterns": [r"gtag\('event'", r"ga\('send',\s*'event'", r"fbq\('track'"],
-        "score_impact": 15,
-        "category": "analytics"
-    },
-    "consent_mode": {
-        "name": "Google Consent Mode v2",
-        "patterns": [r"consent\('default'", r"consent\('update'", r"ad_storage", r"analytics_storage"],
-        "score_impact": 18,
-        "category": "consent"
+# ==================== DEEP GTM ANALYSIS ====================
+@st.cache_data(ttl=3600)
+def deep_gtm_analysis(gtm_id, html_content):
+    """Tiefe GTM-Analyse: Container, DataLayer, Events, Tags"""
+    analysis = {
+        "container_id": gtm_id,
+        "datalayer_found": False,
+        "datalayer_events": [],
+        "datalayer_variables": [],
+        "tags_detected": [],
+        "triggers_detected": [],
+        "implementation_quality": 0,
+        "issues": [],
+        "gtm_config": {}
     }
-}
-
-# ==================== ANALYSIS FUNCTIONS ====================
-@st.cache_data(ttl=3600)
-def get_whois(domain):
-    if not WHOIS_AVAILABLE: return None
-    try:
-        if domain.startswith('http'): domain = urlparse(domain).netloc
-        w = whois.whois(domain)
-        safe_get = lambda v: v[0] if isinstance(v, list) and v else v if v else None
-        data = {
-            "org": w.org if hasattr(w, 'org') and w.org else None,
-            "country": w.country if hasattr(w, 'country') and w.country else None,
-            "registrar": w.registrar or "Unbekannt",
-            "creation_date": safe_get(w.creation_date),
-            "domain_age_years": None
-        }
-        if data["creation_date"]:
-            data["domain_age_years"] = round((datetime.now() - data["creation_date"]).days / 365.25, 1)
-        age = data["domain_age_years"]
-        data["estimated_company_size"] = "Enterprise (500+)" if age and age > 15 else "Mid-Market (100-500)" if age and age > 10 else "SMB (10-100)" if age and age > 5 else "Startup (10-50)" if age and age > 2 else "Early-Stage (<10)"
-        return data
-    except: return None
-
-@st.cache_data(ttl=3600)
-def crawl_pages(base_url, max_pages=5):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-    urls_to_visit, processed, all_html, pages = {base_url}, set(), "", []
-    keywords = ['about', 'ueber', 'company', 'services', 'product', 'pricing', 'contact', 'impressum']
     
+    # GTM.js Container laden
     try:
-        resp = requests.get(base_url, timeout=15, headers=headers)
+        gtm_url = f"https://www.googletagmanager.com/gtm.js?id={gtm_id}"
+        resp = requests.get(gtm_url, timeout=10)
         if resp.status_code == 200:
-            soup = BeautifulSoup(resp.content, 'html.parser')
-            processed.add(base_url)
-            all_html += resp.text
-            pages.append({"url": base_url, "title": soup.title.string if soup.title else "Homepage", "status": "✓"})
-            for link in soup.find_all('a', href=True):
-                full_url = urljoin(base_url, link['href'])
-                if urlparse(full_url).netloc == urlparse(base_url).netloc and any(k in full_url.lower() for k in keywords):
-                    urls_to_visit.add(full_url)
-        
-        for url in list(urls_to_visit)[1:max_pages]:
-            if url in processed: continue
-            try:
-                time.sleep(0.5)
-                resp = requests.get(url, timeout=10, headers=headers)
-                if resp.status_code == 200:
-                    soup = BeautifulSoup(resp.content, 'html.parser')
-                    all_html += resp.text
-                    processed.add(url)
-                    pages.append({"url": url, "title": soup.title.string if soup.title else "Page", "status": "✓"})
-            except: continue
-        
-        return {"combined_html": all_html, "pages": pages, "total_pages_analyzed": len(processed)}
-    except: return None
-
-@st.cache_data(ttl=600)
-def pagespeed_api(url):
-    try:
-        api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={url}&strategy=mobile&category=PERFORMANCE&category=SEO"
-        if "PAGESPEED_API_KEY" in st.secrets: api_url += f"&key={st.secrets['PAGESPEED_API_KEY']}"
-        resp = requests.get(api_url, timeout=30)
-        if resp.status_code == 200:
-            data = resp.json()
-            return {
-                "lighthouse_score": data.get("lighthouseResult", {}).get("categories", {}).get("performance", {}).get("score", 0) * 100,
-                "seo_score": data.get("lighthouseResult", {}).get("categories", {}).get("seo", {}).get("score", 0) * 100
+            gtm_content = resp.text
+            
+            # Analysiere GTM Container-Konfiguration
+            analysis["gtm_config"] = {
+                "size_kb": round(len(gtm_content) / 1024, 2),
+                "minified": ".min." in gtm_url or len(gtm_content) < 50000
             }
-    except: return None
+            
+            # Erkenne Tags im Container
+            tag_patterns = {
+                "Google Analytics": r"google-analytics\.com|googletagmanager\.com.*analytics",
+                "Google Ads": r"googleadservices\.com|googlesyndication",
+                "Meta Pixel": r"facebook\.com/tr|fbevents",
+                "LinkedIn": r"snap\.licdn\.com|linkedin.*insight",
+                "Floodlight": r"fls\.doubleclick\.net",
+                "Hotjar": r"hotjar\.com",
+                "Custom HTML": r"<script|customScripts"
+            }
+            
+            for tag_name, pattern in tag_patterns.items():
+                if re.search(pattern, gtm_content, re.IGNORECASE):
+                    analysis["tags_detected"].append(tag_name)
+            
+            # Trigger-Analyse
+            trigger_types = []
+            if re.search(r"pageview|gtm\.js", gtm_content, re.IGNORECASE):
+                trigger_types.append("Pageview")
+            if re.search(r"click|gtm\.click", gtm_content, re.IGNORECASE):
+                trigger_types.append("Click")
+            if re.search(r"formSubmit|submit", gtm_content, re.IGNORECASE):
+                trigger_types.append("Form Submit")
+            if re.search(r"timer|interval", gtm_content, re.IGNORECASE):
+                trigger_types.append("Timer")
+            if re.search(r"scroll|depth", gtm_content, re.IGNORECASE):
+                trigger_types.append("Scroll")
+            
+            analysis["triggers_detected"] = trigger_types
+            
+    except Exception as e:
+        analysis["issues"].append(f"GTM Container nicht erreichbar: {e}")
+    
+    # DataLayer-Analyse im HTML
+    if re.search(r"window\.dataLayer\s*=|dataLayer\s*=\s*\[", html_content):
+        analysis["datalayer_found"] = True
+        
+        # Extrahiere dataLayer.push Events
+        push_pattern = r"dataLayer\.push\s*\(\s*\{([^}]+)\}\s*\)"
+        pushes = re.findall(push_pattern, html_content)
+        
+        for push in pushes[:20]:  # Limit auf 20 Events
+            # Extrahiere 'event'-Werte
+            event_match = re.search(r"['\"]event['\"]:\s*['\"]([^'\"]+)['\"]", push)
+            if event_match:
+                event_name = event_match.group(1)
+                if event_name not in analysis["datalayer_events"]:
+                    analysis["datalayer_events"].append(event_name)
+            
+            # Extrahiere Variablen (außer 'event')
+            var_matches = re.findall(r"['\"]([a-zA-Z_][a-zA-Z0-9_]*)['\"]:\s*['\"]?([^,'\"}\]]+)['\"]?", push)
+            for var_name, var_value in var_matches:
+                if var_name != 'event' and var_name not in [v["name"] for v in analysis["datalayer_variables"]]:
+                    analysis["datalayer_variables"].append({
+                        "name": var_name,
+                        "sample_value": var_value.strip()[:50]
+                    })
+    
+    # Implementation Quality Score
+    quality = 0
+    if analysis["datalayer_found"]:
+        quality += 30
+    if len(analysis["datalayer_events"]) > 0:
+        quality += 20
+    if len(analysis["datalayer_variables"]) > 3:
+        quality += 15
+    if len(analysis["tags_detected"]) > 2:
+        quality += 20
+    if "Form Submit" in analysis["triggers_detected"]:
+        quality += 10
+    if "Scroll" in analysis["triggers_detected"]:
+        quality += 5
+    
+    analysis["implementation_quality"] = min(100, quality)
+    
+    # Issues identifizieren
+    if not analysis["datalayer_found"]:
+        analysis["issues"].append("⚠️ Kein dataLayer gefunden - Tracking möglicherweise fehlerhaft")
+    if len(analysis["datalayer_events"]) == 0:
+        analysis["issues"].append("⚠️ Keine Events im dataLayer - Event-Tracking fehlt")
+    if len(analysis["tags_detected"]) < 2:
+        analysis["issues"].append("⚠️ Sehr wenige Tags erkannt - GTM wird nicht ausgenutzt")
+    
+    return analysis
 
-def security_headers(url):
-    try:
-        resp = requests.get(url, timeout=10, allow_redirects=True)
-        headers, score, issues = resp.headers, 0, []
-        critical = {'Strict-Transport-Security': 15, 'Content-Security-Policy': 15, 'X-Frame-Options': 15, 'X-Content-Type-Options': 15}
-        for h, p in critical.items():
-            if h in headers: score += p
-            else: issues.append(f"❌ {h} fehlt")
-        grade = "A+" if score >= 60 else "A" if score >= 50 else "B" if score >= 40 else "C" if score >= 30 else "D" if score >= 20 else "F"
-        return {"score": score, "grade": grade, "issues": issues}
-    except: return None
+# ==================== COMPANY INTELLIGENCE ====================
+@st.cache_data(ttl=3600)
+def get_company_intelligence(domain, html_content):
+    """Sammelt Firmeninformationen aus Website + externen Quellen"""
+    company = {
+        "name": None,
+        "industry": None,
+        "description": None,
+        "size_estimate": None,
+        "headquarters": None,
+        "founded": None,
+        "revenue_estimate": None,
+        "business_model": None,
+        "target_audience": None,
+        "products_services": [],
+        "social_media": {},
+        "technologies_used": []
+    }
+    
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # 1. Firmenname aus mehreren Quellen
+    # - Title Tag
+    if soup.title:
+        title = soup.title.string
+        company["name"] = title.split('|')[0].split('-')[0].strip() if title else None
+    
+    # - Meta Tags
+    for meta in soup.find_all('meta'):
+        if meta.get('property') == 'og:site_name' or meta.get('name') == 'application-name':
+            company["name"] = meta.get('content')
+            break
+    
+    # 2. Branche/Industrie aus Keywords & Content
+    industry_keywords = {
+        "E-Commerce": ["shop", "store", "buy", "cart", "checkout", "product", "woocommerce", "shopify"],
+        "SaaS/Software": ["software", "platform", "cloud", "api", "saas", "dashboard", "login", "pricing"],
+        "Finance/Banking": ["bank", "financial", "investment", "insurance", "loan", "credit"],
+        "Healthcare": ["health", "medical", "clinic", "hospital", "patient", "doctor"],
+        "Education": ["education", "learning", "course", "training", "university", "school"],
+        "Real Estate": ["property", "real estate", "apartment", "house", "rent"],
+        "Travel/Hospitality": ["hotel", "travel", "booking", "flight", "vacation"],
+        "Media/Publishing": ["news", "article", "blog", "magazine", "publishing"],
+        "Agency/Consulting": ["agency", "consulting", "services", "solutions", "strategy"],
+        "Manufacturing": ["manufacturing", "production", "factory", "industrial"]
+    }
+    
+    html_lower = html_content.lower()
+    industry_scores = {}
+    for industry, keywords in industry_keywords.items():
+        score = sum(html_lower.count(kw) for kw in keywords)
+        if score > 0:
+            industry_scores[industry] = score
+    
+    if industry_scores:
+        company["industry"] = max(industry_scores, key=industry_scores.get)
+    
+    # 3. Business Model erkennen
+    if any(kw in html_lower for kw in ["buy", "shop", "cart", "price"]):
+        company["business_model"] = "B2C E-Commerce"
+    elif any(kw in html_lower for kw in ["enterprise", "business", "solution", "b2b"]):
+        company["business_model"] = "B2B"
+    elif any(kw in html_lower for kw in ["free trial", "pricing", "subscription"]):
+        company["business_model"] = "SaaS/Subscription"
+    
+    # 4. Firmenbeschreibung aus Meta Description
+    for meta in soup.find_all('meta'):
+        if meta.get('name') == 'description' or meta.get('property') == 'og:description':
+            company["description"] = meta.get('content', '')[:300]
+            break
+    
+    # 5. Social Media Links
+    social_patterns = {
+        "LinkedIn": r"linkedin\.com/company/([^/\s]+)",
+        "Facebook": r"facebook\.com/([^/\s]+)",
+        "Twitter": r"twitter\.com/([^/\s]+)",
+        "Instagram": r"instagram\.com/([^/\s]+)",
+        "YouTube": r"youtube\.com/(c/|channel/|user/)?([^/\s]+)"
+    }
+    
+    for platform, pattern in social_patterns.items():
+        match = re.search(pattern, html_content)
+        if match:
+            company["social_media"][platform] = match.group(1) if len(match.groups()) == 1 else match.group(2)
+    
+    # 6. Produkte/Services aus Navigation
+    nav_texts = []
+    for nav in soup.find_all(['nav', 'header']):
+        for link in nav.find_all('a'):
+            if link.string:
+                nav_texts.append(link.string.strip())
+    
+    service_keywords = ["products", "services", "solutions", "pricing", "features"]
+    company["products_services"] = [text for text in nav_texts if any(kw in text.lower() for kw in service_keywords)][:5]
+    
+    # 7. Whois für Domain-Alter & Inhaber
+    if WHOIS_AVAILABLE:
+        try:
+            w = whois.whois(domain)
+            if hasattr(w, 'creation_date') and w.creation_date:
+                creation = w.creation_date[0] if isinstance(w.creation_date, list) else w.creation_date
+                if creation:
+                    age = (datetime.now() - creation).days / 365.25
+                    company["founded"] = creation.year
+                    company["domain_age_years"] = round(age, 1)
+                    
+                    # Größenschätzung basierend auf Domain-Alter
+                    if age > 15:
+                        company["size_estimate"] = "Enterprise (500+ Mitarbeiter)"
+                        company["revenue_estimate"] = ">€50M"
+                    elif age > 10:
+                        company["size_estimate"] = "Mid-Market (100-500 Mitarbeiter)"
+                        company["revenue_estimate"] = "€10-50M"
+                    elif age > 5:
+                        company["size_estimate"] = "SMB (50-100 Mitarbeiter)"
+                        company["revenue_estimate"] = "€2-10M"
+                    elif age > 2:
+                        company["size_estimate"] = "Startup (10-50 Mitarbeiter)"
+                        company["revenue_estimate"] = "€0.5-2M"
+                    else:
+                        company["size_estimate"] = "Early-Stage (<10 Mitarbeiter)"
+                        company["revenue_estimate"] = "<€500k"
+        except:
+            pass
+    
+    # 8. Externe Suche: Wikipedia (wenn verfügbar)
+    if company["name"]:
+        try:
+            wiki_search = requests.get(
+                f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote_plus(company['name'])}&format=json",
+                timeout=5
+            )
+            if wiki_search.status_code == 200:
+                wiki_data = wiki_search.json()
+                if wiki_data.get("query", {}).get("search"):
+                    # Wikipedia-Treffer gefunden - könnte für Extrakt genutzt werden
+                    company["wikipedia_found"] = True
+        except:
+            pass
+    
+    # 9. Technologien aus HTML
+    tech_indicators = {
+        "WordPress": r"wp-content|wp-includes",
+        "Shopify": r"cdn\.shopify\.com",
+        "React": r"react|_jsx",
+        "Vue.js": r"vue\.js|__vue__",
+        "Angular": r"ng-app|angular",
+        "jQuery": r"jquery"
+    }
+    
+    for tech, pattern in tech_indicators.items():
+        if re.search(pattern, html_content, re.IGNORECASE):
+            company["technologies_used"].append(tech)
+    
+    return company
 
+# ==================== MAIN ANALYSIS ====================
 @st.cache_data(ttl=600)
-def analyze_website(url):
-    results = {"url": url, "timestamp": datetime.now().isoformat(), "detected_tools": {}, "category_scores": {}, 
-               "gtm_container": None, "performance_data": None, "security_data": None, "whois_data": None, 
-               "multi_page_data": None, "advanced_features": {}, "implementation_quality": 0}
+def analyze_website_professional(url):
+    """Professionelle Deep-Dive Analyse"""
+    results = {
+        "url": url,
+        "timestamp": datetime.now().isoformat(),
+        "company_intelligence": {},
+        "gtm_deep_dive": {},
+        "tools_detected": [],
+        "overall_score": 0,
+        "maturity_level": ""
+    }
     
     try:
+        # 1. Multi-Page Crawl
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        urls_to_crawl = [url]
+        
+        # Finde wichtige Unterseiten
+        resp = requests.get(url, timeout=15, headers=headers)
+        soup = BeautifulSoup(resp.content, 'html.parser')
+        
+        important_keywords = ['about', 'ueber', 'company', 'products', 'services', 'pricing', 'contact']
+        for link in soup.find_all('a', href=True)[:50]:
+            href = urljoin(url, link['href'])
+            if urlparse(href).netloc == urlparse(url).netloc and any(kw in href.lower() for kw in important_keywords):
+                urls_to_crawl.append(href)
+        
+        # Crawle bis zu 7 Seiten
+        all_html = ""
+        for crawl_url in urls_to_crawl[:7]:
+            try:
+                time.sleep(0.3)
+                r = requests.get(crawl_url, timeout=10, headers=headers)
+                if r.status_code == 200:
+                    all_html += r.text + "\n"
+            except:
+                continue
+        
+        # 2. Company Intelligence
         domain = urlparse(url).netloc
-        results["whois_data"] = get_whois(domain)
+        results["company_intelligence"] = get_company_intelligence(domain, all_html)
         
-        crawl_data = crawl_pages(url, 5)
-        if crawl_data:
-            results["multi_page_data"] = crawl_data
-            html_content = crawl_data["combined_html"]
-        else:
-            resp = requests.get(url, timeout=15)
-            html_content = resp.text
-            results["multi_page_data"] = {"pages": [{"url": url, "title": "Homepage", "status": "✓"}], "total_pages_analyzed": 1}
+        # 3. GTM Deep-Dive
+        gtm_match = re.search(r'GTM-[A-Z0-9]+', all_html)
+        if gtm_match:
+            gtm_id = gtm_match.group(0)
+            results["gtm_deep_dive"] = deep_gtm_analysis(gtm_id, all_html)
         
-        # Standard Tool-Erkennung
-        for cat, cat_data in TECH_SIGS.items():
-            results["category_scores"][cat] = {"score": 0, "max_score": sum(t["score"] for t in cat_data["tools"].values()), "detected": [], "weight": cat_data["weight"]}
-            for tool_name, tool_info in cat_data["tools"].items():
-                for pattern in tool_info["patterns"]:
-                    if re.search(pattern, html_content, re.IGNORECASE):
-                        results["category_scores"][cat]["detected"].append(tool_name)
-                        results["category_scores"][cat]["score"] += tool_info["score"]
-                        if tool_name not in results["detected_tools"]:
-                            results["detected_tools"][tool_name] = {"category": cat, "score": tool_info["score"], 
-                                                                    "critical": tool_info["critical"], "gmp": tool_info["gmp"], "source": "regex"}
-                        break
+        # 4. Tool-Erkennung (erweitert)
+        tool_patterns = {
+            "Google Analytics 4": r"G-[A-Z0-9]{10,}",
+            "Google Ads": r"AW-\d+",
+            "Meta Pixel": r"fbq\(",
+            "LinkedIn Insight": r"linkedin_data_partner",
+            "TikTok Pixel": r"ttq\(",
+            "Hotjar": r"static\.hotjar\.com",
+            "Clarity": r"clarity\.ms",
+            "HubSpot": r"js\.hs-scripts\.com",
+            "Salesforce": r"salesforce\.com",
+            "Shopify": r"cdn\.shopify\.com",
+            "WordPress": r"wp-content",
+            "Cookiebot": r"consent\.cookiebot",
+            "OneTrust": r"cdn\.cookielaw\.org"
+        }
         
-        # ADVANCED CHECKS - Deep Dive
-        quality_points = 0
-        max_quality = 0
-        for check_id, check_data in ADVANCED_CHECKS.items():
-            max_quality += check_data["score_impact"]
-            for pattern in check_data["patterns"]:
-                if re.search(pattern, html_content, re.IGNORECASE):
-                    results["advanced_features"][check_data["name"]] = {
-                        "status": "✓ Implementiert",
-                        "impact": check_data["score_impact"],
-                        "category": check_data["category"]
-                    }
-                    quality_points += check_data["score_impact"]
-                    # Bonus-Punkte zur Kategorie hinzufügen
-                    if check_data["category"] in results["category_scores"]:
-                        results["category_scores"][check_data["category"]]["score"] += check_data["score_impact"] * 0.5
-                    break
-            else:
-                results["advanced_features"][check_data["name"]] = {
-                    "status": "✗ Fehlt",
-                    "impact": check_data["score_impact"],
-                    "category": check_data["category"]
-                }
+        for tool, pattern in tool_patterns.items():
+            if re.search(pattern, all_html, re.IGNORECASE):
+                results["tools_detected"].append(tool)
         
-        results["implementation_quality"] = round((quality_points / max_quality) * 100) if max_quality > 0 else 0
+        # 5. Scoring
+        base_score = len(results["tools_detected"]) * 5
+        if results["gtm_deep_dive"]:
+            gtm_quality = results["gtm_deep_dive"].get("implementation_quality", 0)
+            base_score += gtm_quality * 0.3
         
-        # GMP-Inferenz
-        if "Campaign Manager 360" in results["detected_tools"]:
-            if "Display & Video 360" not in results["detected_tools"]:
-                results["detected_tools"]["Display & Video 360 (inferred)"] = {"category": "advertising", "score": 10, "critical": True, "gmp": True, "source": "inference", "confidence": "sehr wahrscheinlich"}
-            if "Search Ads 360" not in results["detected_tools"]:
-                results["detected_tools"]["Search Ads 360 (possible)"] = {"category": "advertising", "score": 5, "critical": False, "gmp": True, "source": "inference", "confidence": "möglich"}
-        
-        # GTM Container
-        gtm_match = re.search(r'GTM-[A-Z0-9]+', html_content)
-        if gtm_match: results["gtm_container"] = gtm_match.group(0)
-        
-        # External APIs
-        results["performance_data"] = pagespeed_api(url)
-        results["security_data"] = security_headers(url)
-        
-        # Gesamtscore berechnen (inkl. Implementation Quality Bonus)
-        total_score = sum((data["score"] / data["max_score"]) * 100 * data["weight"] if data["max_score"] > 0 else 0 
-                         for data in results["category_scores"].values())
-        
-        # Bonus für hohe Implementation Quality
-        quality_bonus = (results["implementation_quality"] / 100) * 10
-        total_score = min(100, total_score + quality_bonus)
-        
-        results["overall_score"] = round(total_score)
-        results["maturity_level"] = "🏆 Advanced" if total_score >= 80 else "📈 Intermediate" if total_score >= 60 else "📊 Basic" if total_score >= 40 else "🔰 Beginner"
+        results["overall_score"] = min(100, round(base_score))
+        results["maturity_level"] = "🏆 Advanced" if base_score >= 80 else "📈 Intermediate" if base_score >= 60 else "📊 Basic" if base_score >= 40 else "🔰 Beginner"
         
         return results
+        
     except Exception as e:
         st.error(f"❌ Fehler: {e}")
         return None
-
-def gen_recommendations(results):
-    recs = []
-    if results.get("security_data") and results["security_data"]["score"] < 40:
-        recs.append({"priority": "🔴 Kritisch", "category": "Security", "title": f"Sicherheitslücken (Grade: {results['security_data']['grade']})", 
-                    "action": "Security Headers implementieren", "impact": "Schutz vor Angriffen", "effort": "Low", "timeframe": "1-2 Tage", "roi": "Risk Mitigation"})
-    
-    if results.get("performance_data") and results["performance_data"].get("lighthouse_score", 100) < 50:
-        recs.append({"priority": "🟠 Hoch", "category": "Performance", "title": "Performance-Probleme", "action": "Core Web Vitals optimieren", 
-                    "impact": "Höhere Conversion Rate", "effort": "Medium", "timeframe": "2-4 Wochen", "roi": "250%"})
-    
-    for cat, data in results["category_scores"].items():
-        perc = (data["score"] / data["max_score"]) * 100 if data["max_score"] > 0 else 0
-        if perc < 30 and cat == "analytics":
-            recs.append({"priority": "🔴 Kritisch", "category": "Analytics", "title": "Keine Datengrundlage", "action": "Google Analytics 4 implementieren", 
-                        "impact": "Datenbasierte Optimierung", "effort": "Medium", "timeframe": "1-2 Wochen", "roi": "500%"})
-    
-    has_gmp = any(t.get("gmp", False) for t in results["detected_tools"].values())
-    if not has_gmp and results["overall_score"] >= 60:
-        recs.append({"priority": "💎 Strategisch", "category": "Enterprise", "title": "Bereit für GMP", "action": "GMP-Stack evaluieren", 
-                    "impact": "Enterprise Attribution", "effort": "High", "timeframe": "3-6 Monate", "roi": "Variable"})
-    
-    return sorted(recs, key=lambda x: 0 if "Kritisch" in x["priority"] else 1)[:5]
-
-def calc_roi(results):
-    improvement = 100 - results["overall_score"]
-    potential = improvement * 1000
-    investment = len(gen_recommendations(results)) * 5000
-    roi = round((potential / investment) * 100) if investment > 0 else 0
-    return {"potential_revenue": round(potential), "estimated_investment": investment, "roi_percentage": roi}
-
-def gen_ai_insights(results):
-    try:
-        api_key = st.secrets.get("GEMINI_API_KEY")
-        if not api_key: return None
-        genai.configure(api_key=api_key)
-        
-        context = f"""Domain: {urlparse(results['url']).netloc}
-Score: {results['overall_score']}/100 ({results['maturity_level']})
-Tools: {len(results['detected_tools'])}
-Unternehmensgröße: {results.get('whois_data', {}).get('estimated_company_size', 'N/A') if results.get('whois_data') else 'N/A'}
-
-Erstelle eine kompakte Bewertung (max 120 Wörter):
-1. Executive Summary (2 Sätze)
-2. Größte Stärke (1 Satz)
-3. Kritischste Schwäche (1 Satz)
-4. Quick Win (1 Tipp)
-Nutze Emojis."""
-        
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        return model.generate_content(context).text
-    except: return None
-
-def gen_pdf(results, recs, roi):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    styles = getSampleStyleSheet()
-    story = [Paragraph("MarTech Stack Analyse", styles['Title']), Spacer(1, 12)]
-    
-    data = [["Metric", "Wert"], ["Score", f"{results['overall_score']}/100"], ["Reifegrad", results['maturity_level']]]
-    if results.get("whois_data"): data.append(["Unternehmen", results["whois_data"].get("estimated_company_size", "N/A")])
-    
-    t = Table(data)
-    t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor(PRIMARY_COLOR)), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 1, colors.grey)]))
-    story.append(t)
-    story.append(Spacer(1, 20))
-    
-    for i, rec in enumerate(recs, 1):
-        story.append(Paragraph(f"<b>{i}. {rec['title']}</b> ({rec['priority']})", styles['Normal']))
-        story.append(Paragraph(f"Action: {rec['action']} | ROI: {rec['roi']}", styles['Normal']))
-        story.append(Spacer(1, 10))
-    
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
 
 # ==================== UI ====================
 def main():
     init_db()
     
-    st.markdown(f'<div class="main-header"><h1>🎯 MarTech Stack Analyzer Pro</h1><p>KI-Insights, Multi-Page-Crawling & Whois-Intelligence</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="main-header"><h1>🎯 MarTech Analyzer v4.0 Professional</h1><p>Deep GTM Analysis • Company Intelligence • Multi-Source Data</p></div>', unsafe_allow_html=True)
     
     with st.sidebar:
-        st.header("📊 Navigation")
-        page = st.radio("", ["🔍 Neue Analyse", "📜 Historie", "📊 Benchmark"])
-        st.markdown("---")
-        st.markdown("### 🎨 Features")
-        st.markdown("✅ Gemini AI\n✅ PageSpeed\n✅ Multi-Crawler\n✅ Whois\n✅ Security")
-        st.markdown("---")
-        if "GEMINI_API_KEY" in st.secrets: st.success("✓ Gemini")
-        else: st.error("✗ Gemini (erforderlich)")
-        if WHOIS_AVAILABLE: st.success("✓ Whois")
-        else: st.warning("⚠ Whois (pip install python-whois)")
+        st.header("📊 Pro Features")
+        st.markdown("✅ GTM Container Deep-Dive")
+        st.markdown("✅ DataLayer-Analyse")
+        st.markdown("✅ Company Intelligence")
+        st.markdown("✅ Multi-Page Crawling (7 Seiten)")
+        st.markdown("✅ External Data Sources")
+        st.markdown("✅ Implementation Quality")
+        
+        if "GEMINI_API_KEY" in st.secrets:
+            st.success("✓ Gemini AI")
+        else:
+            st.warning("⚠ Gemini optional")
     
-    if page == "🔍 Neue Analyse":
-        col1, col2 = st.columns([3, 1])
-        with col1: url_input = st.text_input("🌐 URL", placeholder="https://beispiel.de")
-        with col2:
-            st.markdown("<br>", unsafe_allow_html=True)
-            analyze_btn = st.button("🚀 Starten", type="primary", use_container_width=True)
-        
-        if analyze_btn and url_input:
-            if not url_input.startswith(('http://', 'https://')): 
-                st.error("❌ Vollständige URL benötigt")
-            else:
-                with st.spinner("🔍 Analysiere... (40-60s)"):
-                    prog = st.progress(0)
-                    prog.progress(20)
-                    results = analyze_website(url_input)
-                    if results:
-                        prog.progress(60)
-                        recs = gen_recommendations(results)
-                        roi = calc_roi(results)
-                        prog.progress(80)
-                        ai = gen_ai_insights(results)
-                        prog.progress(100)
-                        
-                        domain = urlparse(url_input).netloc
-                        save_analysis(url_input, domain, results["overall_score"], results["maturity_level"], 
-                                    results["category_scores"], results["detected_tools"], recs, results,
-                                    results.get("performance_data", {}).get("lighthouse_score") if results.get("performance_data") else None,
-                                    results.get("security_data", {}).get("grade") if results.get("security_data") else None,
-                                    results.get("whois_data", {}).get("estimated_company_size") if results.get("whois_data") else None,
-                                    results.get("whois_data", {}).get("domain_age_years") if results.get("whois_data") else None)
-                        
-                        st.session_state.current = {"results": results, "recs": recs, "roi": roi, "ai": ai}
-                        prog.empty()
-                        st.success("✅ Fertig!")
-                        st.rerun()
-        
-        if "current" in st.session_state:
-            r, recs, roi, ai = st.session_state.current["results"], st.session_state.current["recs"], st.session_state.current["roi"], st.session_state.current.get("ai")
-            
-            st.markdown("---")
-            
-            if ai:
-                st.markdown(f'<div style="background: linear-gradient(135deg, {ACCENT_COLOR}, #ff8c00); color: white; padding: 1.5rem; border-radius: 10px; margin-bottom: 2rem;"><h3>🤖 KI-Insights</h3><p>{ai.replace(chr(10), "<br>")}</p></div>', unsafe_allow_html=True)
-            
-            if r.get("whois_data"):
-                w = r["whois_data"]
-                st.markdown(f'<div style="background: linear-gradient(135deg, {PRIMARY_COLOR}, #2a6f98); color: white; padding: 1.5rem; border-radius: 10px; margin-bottom: 2rem;"><h3>🏢 Unternehmens-Intel</h3><div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;"><div><small>Größe</small><br><b>{w.get("estimated_company_size", "N/A")}</b></div><div><small>Alter</small><br><b>{w.get("domain_age_years", "N/A")} Jahre</b></div><div><small>Land</small><br><b>{w.get("country", "N/A")}</b></div><div><small>Inhaber</small><br><b>{w.get("org", "N/A")}</b></div></div></div>', unsafe_allow_html=True)
-            
-            if r.get("multi_page_data"):
-                with st.expander(f"📄 {r['multi_page_data']['total_pages_analyzed']} Seiten analysiert"):
-                    for p in r["multi_page_data"]["pages"]: st.caption(f"{p['status']} {p['title']}")
-            
-            col1, col2, col3, col4, col5 = st.columns(5)
-            with col1: st.markdown(f'<div class="metric-card"><div style="font-size: 3rem;">{r["overall_score"]}</div><small>Maturity</small></div>', unsafe_allow_html=True)
-            with col2: st.markdown(f'<div class="metric-card"><div style="font-size: 1.5rem;">{r["maturity_level"]}</div><small>Level</small></div>', unsafe_allow_html=True)
-            with col3: st.markdown(f'<div class="metric-card"><div style="font-size: 1.8rem;">{len(r["detected_tools"])}</div><small>Tools</small></div>', unsafe_allow_html=True)
-            with col4: 
-                perf = r.get("performance_data", {}).get("lighthouse_score", 0) if r.get("performance_data") else 0
-                st.markdown(f'<div class="metric-card"><div style="font-size: 1.8rem;">{round(perf) if perf else "N/A"}</div><small>Performance</small></div>', unsafe_allow_html=True)
-            with col5:
-                sec = r.get("security_data", {}).get("grade", "N/A") if r.get("security_data") else "N/A"
-                st.markdown(f'<div class="metric-card"><div style="font-size: 1.8rem;">{sec}</div><small>Security</small></div>', unsafe_allow_html=True)
-            
-            st.markdown(f'<div class="success-card"><h3 style="color: {PRIMARY_COLOR};">💰 ROI-Potenzial</h3><div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;"><div><h2 style="color: #28a745;">€{roi["potential_revenue"]:,}</h2><small>Umsatzpotenzial</small></div><div><h2 style="color: {PRIMARY_COLOR};">€{roi["estimated_investment"]:,}</h2><small>Investition</small></div><div><h2 style="color: {ACCENT_COLOR};">{roi["roi_percentage"]}%</h2><small>ROI</small></div></div></div>', unsafe_allow_html=True)
-            
-            # ADVANCED FEATURES ANALYSE
-            if r.get("advanced_features"):
-                st.markdown("### 🔬 Deep-Dive: Implementierungs-Qualität")
-                st.markdown(f"**Implementation Quality Score: {r['implementation_quality']}/100**")
+    url_input = st.text_input("🌐 Website-URL", placeholder="https://www.beispiel.de")
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        analyze_btn = st.button("🚀 Deep-Analyse", type="primary", use_container_width=True)
+    
+    if analyze_btn and url_input:
+        if not url_input.startswith(('http://', 'https://')):
+            st.error("❌ Vollständige URL benötigt")
+        else:
+            with st.spinner("🔬 Führe profunde Analyse durch... (60-90s)"):
+                prog = st.progress(0)
                 
-                impl_color = "#28a745" if r["implementation_quality"] >= 70 else ACCENT_COLOR if r["implementation_quality"] >= 40 else "#dc3545"
-                st.markdown(f'<div style="background: #e0e0e0; height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 1.5rem;"><div style="background: {impl_color}; height: 100%; width: {r["implementation_quality"]}%;"></div></div>', unsafe_allow_html=True)
+                prog.progress(30)
+                results = analyze_website_professional(url_input)
                 
-                col1, col2 = st.columns(2)
-                implemented = {k: v for k, v in r["advanced_features"].items() if "✓" in v["status"]}
-                missing = {k: v for k, v in r["advanced_features"].items() if "✗" in v["status"]}
-                
-                with col1:
-                    st.markdown(f"**✅ Implementiert ({len(implemented)}):**")
-                    for feature, data in implemented.items():
-                        st.markdown(f'<div style="background: #d4edda; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem;"><b>{feature}</b><br><small>Impact: +{data["impact"]} Punkte | Kategorie: {data["category"]}</small></div>', unsafe_allow_html=True)
-                
-                with col2:
-                    st.markdown(f"**❌ Fehlend ({len(missing)}):**")
-                    for feature, data in missing.items():
-                        st.markdown(f'<div style="background: #f8d7da; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem;"><b>{feature}</b><br><small>Potenzial: +{data["impact"]} Punkte | Kategorie: {data["category"]}</small></div>', unsafe_allow_html=True)
-            
-            st.markdown("### 📊 Kategorien")
-            for cat, data in r["category_scores"].items():
-                perc = round((data["score"] / data["max_score"]) * 100) if data["max_score"] > 0 else 0
-                color = "#28a745" if perc >= 70 else ACCENT_COLOR if perc >= 40 else "#dc3545"
-                st.markdown(f'<div style="margin-bottom: 1rem;"><div style="display: flex; justify-content: space-between;"><b>{TECH_SIGS[cat]["name"]}</b><span style="color: {color}; font-weight: bold;">{perc}%</span></div><div style="background: #e0e0e0; height: 8px; border-radius: 4px;"><div style="background: {color}; height: 100%; width: {perc}%;"></div></div></div>', unsafe_allow_html=True)
-            
-            st.markdown("### 🔧 Tools")
-            with st.expander(f"{len(r['detected_tools'])} Tools erkannt"):
-                for tool, info in r["detected_tools"].items():
-                    badge = "🏆 GMP" if info.get("gmp") else ""
-                    st.markdown(f"**{tool}** {badge} - {info['category']}")
-            
-            st.markdown("### 🎯 Empfehlungen")
-            for i, rec in enumerate(recs, 1):
-                st.markdown(f'<div style="border-left: 5px solid {ACCENT_COLOR}; padding: 1rem; background: white; border-radius: 8px; margin-bottom: 1rem;"><b>{i}. {rec["title"]}</b> ({rec["priority"]})<br><small>{rec["action"]} | {rec["timeframe"]} | ROI: {rec["roi"]}</small></div>', unsafe_allow_html=True)
-            
-            st.markdown("---")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                pdf = gen_pdf(r, recs, roi)
-                st.download_button("📄 PDF-Report", pdf, file_name=f"analysis_{urlparse(r['url']).netloc}.pdf", mime="application/pdf", use_container_width=True)
-            with col2:
-                st.download_button("📋 JSON-Export", json.dumps(r, indent=2, ensure_ascii=False), file_name=f"data_{urlparse(r['url']).netloc}.json", mime="application/json", use_container_width=True)
-            with col3:
-                if st.button("🔄 Neue Analyse", use_container_width=True):
-                    del st.session_state.current
+                if results:
+                    prog.progress(100)
+                    
+                    domain = urlparse(url_input).netloc
+                    save_analysis(url_input, domain, results["overall_score"], results, 
+                                results.get("gtm_deep_dive", {}), results.get("company_intelligence", {}))
+                    
+                    st.session_state.pro_results = results
+                    prog.empty()
+                    st.success("✅ Profunde Analyse abgeschlossen!")
                     st.rerun()
     
-    elif page == "📜 Historie":
-        st.header("📜 Analyse-Historie")
-        history = get_history(20)
+    if "pro_results" in st.session_state:
+        r = st.session_state.pro_results
         
-        if not history:
-            st.info("Noch keine Analysen durchgeführt.")
-        else:
-            st.markdown(f"**{len(history)} Analysen** gespeichert")
-            
-            df = pd.DataFrame(history, columns=["ID", "URL", "Domain", "Timestamp", "Score", "Maturity", "Performance", "Security"])
-            df["Timestamp"] = pd.to_datetime(df["Timestamp"]).dt.strftime("%d.%m.%Y %H:%M")
-            
-            for idx, row in df.iterrows():
-                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
-                with col1:
-                    st.markdown(f"**{row['Domain']}**")
-                    st.caption(row['Timestamp'])
-                with col2:
-                    st.caption(row['URL'])
-                with col3:
-                    color = "#28a745" if row['Score'] >= 70 else ACCENT_COLOR if row['Score'] >= 40 else "#dc3545"
-                    st.markdown(f"<div style='text-align: center; font-size: 1.5rem; font-weight: bold; color: {color};'>{row['Score']}</div>", unsafe_allow_html=True)
-                with col4:
-                    if st.button("📊", key=f"v_{row['ID']}"):
-                        data = get_by_id(row['ID'])
-                        if data:
-                            raw = json.loads(data[9])
-                            st.session_state.current = {
-                                "results": raw,
-                                "recs": json.loads(data[7]),
-                                "roi": calc_roi(raw),
-                                "ai": None
-                            }
-                            st.rerun()
-                st.markdown("---")
-    
-    elif page == "📊 Benchmark":
-        st.header("📊 Benchmark-Vergleich")
-        history = get_history(50)
+        st.markdown("---")
         
-        if len(history) < 2:
-            st.info("Mindestens 2 Analysen erforderlich.")
+        # Company Intelligence Card
+        if r.get("company_intelligence"):
+            c = r["company_intelligence"]
+            st.markdown(f"""
+                <div class="insight-card">
+                    <h2 style="color: {PRIMARY_COLOR}; margin-top:0;">🏢 Company Intelligence</h2>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                        <div><b>Firma:</b> {c.get('name', 'N/A')}</div>
+                        <div><b>Branche:</b> {c.get('industry', 'N/A')}</div>
+                        <div><b>Geschäftsmodell:</b> {c.get('business_model', 'N/A')}</div>
+                        <div><b>Größe:</b> {c.get('size_estimate', 'N/A')}</div>
+                        <div><b>Umsatz (geschätzt):</b> {c.get('revenue_estimate', 'N/A')}</div>
+                        <div><b>Gegründet:</b> {c.get('founded', 'N/A')}</div>
+                    </div>
+                    <p style="margin-top: 1rem;"><b>Beschreibung:</b><br>{c.get('description', 'N/A')}</p>
+                    {f"<p><b>Social Media:</b> {', '.join([f'{k}: @{v}' for k,v in c.get('social_media', {}).items()])}</p>" if c.get('social_media') else ""}
+                    {f"<p><b>Technologien:</b> {', '.join(c.get('technologies_used', []))}</p>" if c.get('technologies_used') else ""}
+                </div>
+            """, unsafe_allow_html=True)
+        
+        # GTM Deep-Dive
+        if r.get("gtm_deep_dive"):
+            gtm = r["gtm_deep_dive"]
+            st.markdown(f"""
+                <div class="insight-card">
+                    <h2 style="color: {PRIMARY_COLOR}; margin-top:0;">🔬 GTM Deep-Dive Analysis</h2>
+                    <p><b>Container ID:</b> {gtm.get('container_id', 'N/A')}</p>
+                    <p><b>Implementation Quality:</b> <span style="font-size: 1.5rem; font-weight: bold; color: {'#28a745' if gtm.get('implementation_quality', 0) >= 70 else ACCENT_COLOR};">{gtm.get('implementation_quality', 0)}/100</span></p>
+                    
+                    <div style="background: #e0e0e0; height: 10px; border-radius: 5px; margin: 1rem 0;">
+                        <div style="background: {'#28a745' if gtm.get('implementation_quality', 0) >= 70 else ACCENT_COLOR}; height: 100%; width: {gtm.get('implementation_quality', 0)}%; border-radius: 5px;"></div>
+                    </div>
+                    
+                    <p><b>DataLayer:</b> {'✅ Gefunden' if gtm.get('datalayer_found') else '❌ Nicht gefunden'}</p>
+                    
+                    {f"<p><b>DataLayer Events ({len(gtm.get('datalayer_events', []))}):</b><br>{', '.join(gtm.get('datalayer_events', [])[:10])}</p>" if gtm.get('datalayer_events') else ""}
+                    
+                    {f"<p><b>DataLayer Variablen ({len(gtm.get('datalayer_variables', []))}):</b><br>{', '.join([v['name'] for v in gtm.get('datalayer_variables', [])])}</p>" if gtm.get('datalayer_variables') else ""}
+                    
+                    {f"<p><b>Tags im Container ({len(gtm.get('tags_detected', []))}):</b><br>{', '.join(gtm.get('tags_detected', []))}</p>" if gtm.get('tags_detected') else ""}
+                    
+                    {f"<p><b>Trigger-Typen:</b> {', '.join(gtm.get('triggers_detected', []))}</p>" if gtm.get('triggers_detected') else ""}
+                    
+                    {f"<div style='background: #fff3cd; padding: 1rem; border-radius: 5px; margin-top: 1rem;'><b>⚠️ Issues:</b><ul>{''.join([f'<li>{issue}</li>' for issue in gtm.get('issues', [])])}</ul></div>" if gtm.get('issues') else ""}
+                </div>
+            """, unsafe_allow_html=True)
+        
+        # Metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f'<div class="metric-card"><div style="font-size: 3rem;">{r["overall_score"]}</div><small>Overall Score</small></div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown(f'<div class="metric-card"><div style="font-size: 1.5rem;">{r["maturity_level"]}</div><small>Maturity Level</small></div>', unsafe_allow_html=True)
+        with col3:
+            st.markdown(f'<div class="metric-card"><div style="font-size: 1.8rem;">{len(r["tools_detected"])}</div><small>Tools Detected</small></div>', unsafe_allow_html=True)
+        
+        # Tools
+        st.markdown("### 🔧 Detected Tools & Technologies")
+        if r["tools_detected"]:
+            cols = st.columns(4)
+            for idx, tool in enumerate(r["tools_detected"]):
+                with cols[idx % 4]:
+                    st.markdown(f"✅ **{tool}**")
         else:
-            df = pd.DataFrame(history, columns=["ID", "URL", "Domain", "Timestamp", "Score", "Maturity", "Performance", "Security"])
-            
-            st.markdown("### 🏆 Top-Performer")
-            top10 = df.nlargest(10, "Score")[["Domain", "Score"]]
-            st.bar_chart(top10.set_index("Domain"))
-            
-            st.markdown("---")
-            col1, col2, col3 = st.columns(3)
-            with col1: st.metric("Durchschnitt", f"{df['Score'].mean():.1f}")
-            with col2: st.metric("Median", f"{df['Score'].median():.1f}")
-            with col3: st.metric("Höchster Score", f"{df['Score'].max()}")
-            
-            st.markdown("---")
-            st.markdown("### 📈 Performance-Übersicht")
-            df_perf = df[df["Performance"].notna()]
-            if not df_perf.empty:
-                st.metric("Durchschnittliche Performance", f"{df_perf['Performance'].mean():.1f}/100")
-                st.dataframe(df_perf.nlargest(5, "Performance")[["Domain", "Performance", "Score"]], use_container_width=True, hide_index=True)
-            else:
-                st.info("Keine Performance-Daten verfügbar")
-            
-            st.markdown("---")
-            st.markdown("### 🔒 Security-Verteilung")
-            df_sec = df[df["Security"].notna()]
-            if not df_sec.empty:
-                grade_counts = df_sec["Security"].value_counts()
-                st.bar_chart(grade_counts)
-                for grade, count in grade_counts.items():
-                    perc = (count / len(df_sec)) * 100
-                    st.markdown(f"**{grade}**: {count} ({perc:.1f}%)")
-            else:
-                st.info("Keine Security-Daten verfügbar")
+            st.info("Keine Standard-Tools erkannt")
+        
+        # Export
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📋 JSON Export", use_container_width=True):
+                st.download_button("Download", json.dumps(r, indent=2, ensure_ascii=False), 
+                                 file_name=f"analysis_{urlparse(r['url']).netloc}.json", 
+                                 mime="application/json", use_container_width=True)
+        with col2:
+            if st.button("🔄 Neue Analyse", use_container_width=True):
+                del st.session_state.pro_results
+                st.rerun()
 
 if __name__ == "__main__":
     main()
