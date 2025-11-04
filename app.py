@@ -76,28 +76,129 @@ def get_by_id(aid):
 
 # ==================== TECH SIGNATURES ====================
 TECH_SIGS = {
-    "analytics": {"weight": 0.20, "name": "Analytics & Data", "tools": {
-        "Google Analytics 4": {"score": 10, "patterns": [r"G-[A-Z0-9]{10,}", r"gtag.*config.*G-"], "critical": True, "gmp": False},
-        "Google Analytics Universal": {"score": 6, "patterns": [r"UA-\d+-\d+"], "critical": True, "gmp": False},
-        "Adobe Analytics": {"score": 9, "patterns": [r"s_code\.js", r"AppMeasurement"], "critical": True, "gmp": False},
-        "Matomo": {"score": 8, "patterns": [r"matomo\.js", r"_paq\.push"], "critical": False, "gmp": False}}},
-    "advertising": {"weight": 0.25, "name": "Advertising & Performance", "tools": {
-        "Google Ads": {"score": 9, "patterns": [r"AW-\d+"], "critical": True, "gmp": False},
-        "Campaign Manager 360": {"score": 10, "patterns": [r"fls\.doubleclick\.net"], "critical": True, "gmp": True},
-        "Meta Pixel": {"score": 9, "patterns": [r"fbq\(", r"facebook\.com/tr"], "critical": True, "gmp": False},
-        "LinkedIn Insight": {"score": 8, "patterns": [r"linkedin_data_partner_id"], "critical": True, "gmp": False}}},
+    "analytics": {"weight": 0.18, "name": "Analytics & Data", "tools": {
+        "Google Analytics 4": {"score": 10, "patterns": [r"G-[A-Z0-9]{10,}", r"gtag.*config.*G-", r"gtag/js"], "critical": True, "gmp": False},
+        "Google Analytics Universal": {"score": 6, "patterns": [r"UA-\d+-\d+", r"analytics\.js"], "critical": True, "gmp": False},
+        "Adobe Analytics": {"score": 9, "patterns": [r"s_code\.js", r"AppMeasurement", r"omniture", r"s\.t\(\)"], "critical": True, "gmp": False},
+        "Matomo": {"score": 8, "patterns": [r"matomo\.js", r"_paq\.push", r"piwik"], "critical": False, "gmp": False},
+        "Mixpanel": {"score": 7, "patterns": [r"mixpanel", r"mp_"], "critical": False, "gmp": False},
+        "Amplitude": {"score": 7, "patterns": [r"amplitude\.com", r"amplitude\.getInstance"], "critical": False, "gmp": False},
+        "Heap Analytics": {"score": 7, "patterns": [r"heap\.load", r"heapanalytics"], "critical": False, "gmp": False}}},
+    "advertising": {"weight": 0.22, "name": "Advertising & Performance", "tools": {
+        "Google Ads": {"score": 9, "patterns": [r"AW-\d+", r"google_conversion_id", r"googleadservices"], "critical": True, "gmp": False},
+        "Campaign Manager 360": {"score": 10, "patterns": [r"fls\.doubleclick\.net", r"doubleclick\.net/activityi", r"2mdn\.net"], "critical": True, "gmp": True},
+        "Display & Video 360": {"score": 10, "patterns": [r"display\.doubleclick", r"dbm\.doubleclick"], "critical": True, "gmp": True},
+        "Search Ads 360": {"score": 9, "patterns": [r"sa360", r"searchads360"], "critical": False, "gmp": True},
+        "Meta Pixel": {"score": 9, "patterns": [r"fbq\(", r"facebook\.com/tr", r"_fbp", r"connect\.facebook\.net"], "critical": True, "gmp": False},
+        "Meta CAPI": {"score": 10, "patterns": [r"graph\.facebook\.com.*events"], "critical": True, "gmp": False},
+        "LinkedIn Insight Tag": {"score": 8, "patterns": [r"linkedin_data_partner_id", r"snap\.licdn\.com", r"_linkedin_partner_id"], "critical": True, "gmp": False},
+        "TikTok Pixel": {"score": 7, "patterns": [r"tiktok.*analytics", r"ttq\(", r"analytics\.tiktok"], "critical": False, "gmp": False},
+        "Twitter/X Ads": {"score": 6, "patterns": [r"static\.ads-twitter\.com", r"twq\("], "critical": False, "gmp": False},
+        "Pinterest Tag": {"score": 6, "patterns": [r"pintrk\(", r"ct\.pinterest\.com"], "critical": False, "gmp": False},
+        "Snapchat Pixel": {"score": 6, "patterns": [r"snaptr\(", r"sc-static\.net"], "critical": False, "gmp": False},
+        "Reddit Pixel": {"score": 6, "patterns": [r"rdt\(", r"redditpixel"], "critical": False, "gmp": False}}},
     "tagManagement": {"weight": 0.15, "name": "Tag Management", "tools": {
-        "Google Tag Manager": {"score": 10, "patterns": [r"GTM-[A-Z0-9]+"], "critical": True, "gmp": False},
-        "Adobe Launch": {"score": 9, "patterns": [r"assets\.adobedtm\.com"], "critical": True, "gmp": False}}},
-    "cro": {"weight": 0.15, "name": "CRO & UX", "tools": {
-        "Hotjar": {"score": 8, "patterns": [r"static\.hotjar\.com"], "critical": False, "gmp": False},
-        "Microsoft Clarity": {"score": 7, "patterns": [r"clarity\.ms"], "critical": False, "gmp": False}}},
-    "crm": {"weight": 0.15, "name": "CRM & Automation", "tools": {
-        "HubSpot": {"score": 9, "patterns": [r"js\.hs-scripts\.com"], "critical": True, "gmp": False},
-        "Salesforce": {"score": 10, "patterns": [r"salesforce\.com", r"pi\.pardot"], "critical": True, "gmp": False}}},
-    "consent": {"weight": 0.10, "name": "Consent & Privacy", "tools": {
-        "Cookiebot": {"score": 9, "patterns": [r"consent\.cookiebot"], "critical": True, "gmp": False},
-        "OneTrust": {"score": 10, "patterns": [r"cdn\.cookielaw\.org"], "critical": True, "gmp": False}}}
+        "Google Tag Manager": {"score": 10, "patterns": [r"GTM-[A-Z0-9]+", r"googletagmanager\.com/gtm"], "critical": True, "gmp": False},
+        "Adobe Launch": {"score": 9, "patterns": [r"assets\.adobedtm\.com", r"launch-[a-z0-9]+\.min\.js"], "critical": True, "gmp": False},
+        "Tealium": {"score": 9, "patterns": [r"tags\.tiqcdn\.com", r"utag\.js"], "critical": False, "gmp": False},
+        "Segment": {"score": 8, "patterns": [r"cdn\.segment\.com", r"analytics\.js", r"segment\.io"], "critical": False, "gmp": False},
+        "Ensighten": {"score": 8, "patterns": [r"nexus\.ensighten\.com"], "critical": False, "gmp": False}}},
+    "cro": {"weight": 0.13, "name": "CRO & User Experience", "tools": {
+        "Hotjar": {"score": 8, "patterns": [r"static\.hotjar\.com", r"window\.hj", r"hjid"], "critical": False, "gmp": False},
+        "Microsoft Clarity": {"score": 7, "patterns": [r"clarity\.ms", r"c\.clarity\.ms"], "critical": False, "gmp": False},
+        "Optimizely": {"score": 9, "patterns": [r"optimizely\.com", r"cdn\.optimizely"], "critical": False, "gmp": False},
+        "VWO": {"score": 8, "patterns": [r"dev\.vwo\.com", r"_vwo"], "critical": False, "gmp": False},
+        "Google Optimize": {"score": 7, "patterns": [r"optimize\.js", r"google-optimize"], "critical": False, "gmp": False},
+        "FullStory": {"score": 8, "patterns": [r"fullstory\.com", r"fs\.identify"], "critical": False, "gmp": False},
+        "Lucky Orange": {"score": 6, "patterns": [r"luckyorange\.com"], "critical": False, "gmp": False},
+        "Crazy Egg": {"score": 6, "patterns": [r"crazyegg\.com"], "critical": False, "gmp": False}}},
+    "crm": {"weight": 0.14, "name": "CRM & Marketing Automation", "tools": {
+        "HubSpot": {"score": 9, "patterns": [r"js\.hs-scripts\.com", r"_hsq", r"hubspot"], "critical": True, "gmp": False},
+        "Salesforce": {"score": 10, "patterns": [r"salesforce\.com", r"pi\.pardot", r"my\.salesforce"], "critical": True, "gmp": False},
+        "Marketo": {"score": 9, "patterns": [r"munchkin\.js", r"Munchkin\.init", r"mktoforms2"], "critical": True, "gmp": False},
+        "Intercom": {"score": 8, "patterns": [r"widget\.intercom\.io", r"intercomSettings"], "critical": False, "gmp": False},
+        "Drift": {"score": 7, "patterns": [r"js\.driftt\.com", r"drift\.load"], "critical": False, "gmp": False},
+        "ActiveCampaign": {"score": 7, "patterns": [r"ac_track\.js", r"trackcmp\.net"], "critical": False, "gmp": False},
+        "Mailchimp": {"score": 6, "patterns": [r"list-manage\.com", r"mcjs"], "critical": False, "gmp": False},
+        "Klaviyo": {"score": 8, "patterns": [r"static\.klaviyo\.com", r"klaviyo\.js"], "critical": False, "gmp": False},
+        "Customer.io": {"score": 7, "patterns": [r"customer\.io", r"_cio"], "critical": False, "gmp": False}}},
+    "consent": {"weight": 0.12, "name": "Consent & Privacy", "tools": {
+        "Cookiebot": {"score": 9, "patterns": [r"consent\.cookiebot", r"Cybot", r"CookieConsent"], "critical": True, "gmp": False},
+        "OneTrust": {"score": 10, "patterns": [r"cdn\.cookielaw\.org", r"optanon", r"OneTrust"], "critical": True, "gmp": False},
+        "Usercentrics": {"score": 8, "patterns": [r"app\.usercentrics", r"uc\.js"], "critical": False, "gmp": False},
+        "Termly": {"score": 7, "patterns": [r"termly\.io"], "critical": False, "gmp": False},
+        "Quantcast": {"score": 7, "patterns": [r"quantserve\.com", r"__qca"], "critical": False, "gmp": False},
+        "TrustArc": {"score": 8, "patterns": [r"trustarc\.com", r"consent-pref"], "critical": False, "gmp": False}}},
+    "ecommerce": {"weight": 0.06, "name": "E-Commerce Platforms", "tools": {
+        "Shopify": {"score": 9, "patterns": [r"cdn\.shopify\.com", r"Shopify\.theme", r"myshopify\.com"], "critical": True, "gmp": False},
+        "WooCommerce": {"score": 7, "patterns": [r"wp-content/plugins/woocommerce", r"woocommerce"], "critical": False, "gmp": False},
+        "Magento": {"score": 8, "patterns": [r"mage-init", r"Magento_"], "critical": False, "gmp": False},
+        "BigCommerce": {"score": 7, "patterns": [r"bigcommerce\.com"], "critical": False, "gmp": False},
+        "Salesforce Commerce Cloud": {"score": 9, "patterns": [r"demandware\.net"], "critical": False, "gmp": False}}}
+}
+
+# Zusätzliche Deep-Dive Checks
+ADVANCED_CHECKS = {
+    "data_layer": {
+        "name": "DataLayer Implementation",
+        "patterns": [r"dataLayer\.push", r"window\.dataLayer", r"dataLayer\s*="],
+        "score_impact": 15,
+        "category": "tagManagement"
+    },
+    "server_side_tracking": {
+        "name": "Server-Side Tracking (GTM SS)",
+        "patterns": [r"sgtm\.", r"server-side", r"\.run\.app"],
+        "score_impact": 20,
+        "category": "tagManagement"
+    },
+    "enhanced_ecommerce": {
+        "name": "Enhanced E-Commerce Tracking",
+        "patterns": [r"ecommerce\.", r"purchase", r"checkout", r"impressions"],
+        "score_impact": 15,
+        "category": "ecommerce"
+    },
+    "cross_domain_tracking": {
+        "name": "Cross-Domain Tracking",
+        "patterns": [r"linker", r"allowLinker", r"_gac_"],
+        "score_impact": 10,
+        "category": "analytics"
+    },
+    "user_id_tracking": {
+        "name": "User-ID Tracking",
+        "patterns": [r"user_id", r"userId", r"setUserId"],
+        "score_impact": 12,
+        "category": "analytics"
+    },
+    "custom_dimensions": {
+        "name": "Custom Dimensions/Events",
+        "patterns": [r"dimension\d+", r"metric\d+", r"customDimension"],
+        "score_impact": 8,
+        "category": "analytics"
+    },
+    "ab_testing": {
+        "name": "A/B Testing Active",
+        "patterns": [r"experiment", r"variation", r"vwo_", r"optly"],
+        "score_impact": 12,
+        "category": "cro"
+    },
+    "heatmap_tracking": {
+        "name": "Heatmap/Session Recording",
+        "patterns": [r"heatmap", r"recording", r"replay", r"session"],
+        "score_impact": 10,
+        "category": "cro"
+    },
+    "event_tracking": {
+        "name": "Event Tracking Implementation",
+        "patterns": [r"gtag\('event'", r"ga\('send',\s*'event'", r"fbq\('track'"],
+        "score_impact": 15,
+        "category": "analytics"
+    },
+    "consent_mode": {
+        "name": "Google Consent Mode v2",
+        "patterns": [r"consent\('default'", r"consent\('update'", r"ad_storage", r"analytics_storage"],
+        "score_impact": 18,
+        "category": "consent"
+    }
 }
 
 # ==================== ANALYSIS FUNCTIONS ====================
@@ -184,7 +285,8 @@ def security_headers(url):
 @st.cache_data(ttl=600)
 def analyze_website(url):
     results = {"url": url, "timestamp": datetime.now().isoformat(), "detected_tools": {}, "category_scores": {}, 
-               "gtm_container": None, "performance_data": None, "security_data": None, "whois_data": None, "multi_page_data": None}
+               "gtm_container": None, "performance_data": None, "security_data": None, "whois_data": None, 
+               "multi_page_data": None, "advanced_features": {}, "implementation_quality": 0}
     
     try:
         domain = urlparse(url).netloc
@@ -199,6 +301,7 @@ def analyze_website(url):
             html_content = resp.text
             results["multi_page_data"] = {"pages": [{"url": url, "title": "Homepage", "status": "✓"}], "total_pages_analyzed": 1}
         
+        # Standard Tool-Erkennung
         for cat, cat_data in TECH_SIGS.items():
             results["category_scores"][cat] = {"score": 0, "max_score": sum(t["score"] for t in cat_data["tools"].values()), "detected": [], "weight": cat_data["weight"]}
             for tool_name, tool_info in cat_data["tools"].items():
@@ -211,18 +314,55 @@ def analyze_website(url):
                                                                     "critical": tool_info["critical"], "gmp": tool_info["gmp"], "source": "regex"}
                         break
         
+        # ADVANCED CHECKS - Deep Dive
+        quality_points = 0
+        max_quality = 0
+        for check_id, check_data in ADVANCED_CHECKS.items():
+            max_quality += check_data["score_impact"]
+            for pattern in check_data["patterns"]:
+                if re.search(pattern, html_content, re.IGNORECASE):
+                    results["advanced_features"][check_data["name"]] = {
+                        "status": "✓ Implementiert",
+                        "impact": check_data["score_impact"],
+                        "category": check_data["category"]
+                    }
+                    quality_points += check_data["score_impact"]
+                    # Bonus-Punkte zur Kategorie hinzufügen
+                    if check_data["category"] in results["category_scores"]:
+                        results["category_scores"][check_data["category"]]["score"] += check_data["score_impact"] * 0.5
+                    break
+            else:
+                results["advanced_features"][check_data["name"]] = {
+                    "status": "✗ Fehlt",
+                    "impact": check_data["score_impact"],
+                    "category": check_data["category"]
+                }
+        
+        results["implementation_quality"] = round((quality_points / max_quality) * 100) if max_quality > 0 else 0
+        
+        # GMP-Inferenz
         if "Campaign Manager 360" in results["detected_tools"]:
             if "Display & Video 360" not in results["detected_tools"]:
                 results["detected_tools"]["Display & Video 360 (inferred)"] = {"category": "advertising", "score": 10, "critical": True, "gmp": True, "source": "inference", "confidence": "sehr wahrscheinlich"}
+            if "Search Ads 360" not in results["detected_tools"]:
+                results["detected_tools"]["Search Ads 360 (possible)"] = {"category": "advertising", "score": 5, "critical": False, "gmp": True, "source": "inference", "confidence": "möglich"}
         
+        # GTM Container
         gtm_match = re.search(r'GTM-[A-Z0-9]+', html_content)
         if gtm_match: results["gtm_container"] = gtm_match.group(0)
         
+        # External APIs
         results["performance_data"] = pagespeed_api(url)
         results["security_data"] = security_headers(url)
         
+        # Gesamtscore berechnen (inkl. Implementation Quality Bonus)
         total_score = sum((data["score"] / data["max_score"]) * 100 * data["weight"] if data["max_score"] > 0 else 0 
                          for data in results["category_scores"].values())
+        
+        # Bonus für hohe Implementation Quality
+        quality_bonus = (results["implementation_quality"] / 100) * 10
+        total_score = min(100, total_score + quality_bonus)
+        
         results["overall_score"] = round(total_score)
         results["maturity_level"] = "🏆 Advanced" if total_score >= 80 else "📈 Intermediate" if total_score >= 60 else "📊 Basic" if total_score >= 40 else "🔰 Beginner"
         
@@ -388,6 +528,28 @@ def main():
                 st.markdown(f'<div class="metric-card"><div style="font-size: 1.8rem;">{sec}</div><small>Security</small></div>', unsafe_allow_html=True)
             
             st.markdown(f'<div class="success-card"><h3 style="color: {PRIMARY_COLOR};">💰 ROI-Potenzial</h3><div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;"><div><h2 style="color: #28a745;">€{roi["potential_revenue"]:,}</h2><small>Umsatzpotenzial</small></div><div><h2 style="color: {PRIMARY_COLOR};">€{roi["estimated_investment"]:,}</h2><small>Investition</small></div><div><h2 style="color: {ACCENT_COLOR};">{roi["roi_percentage"]}%</h2><small>ROI</small></div></div></div>', unsafe_allow_html=True)
+            
+            # ADVANCED FEATURES ANALYSE
+            if r.get("advanced_features"):
+                st.markdown("### 🔬 Deep-Dive: Implementierungs-Qualität")
+                st.markdown(f"**Implementation Quality Score: {r['implementation_quality']}/100**")
+                
+                impl_color = "#28a745" if r["implementation_quality"] >= 70 else ACCENT_COLOR if r["implementation_quality"] >= 40 else "#dc3545"
+                st.markdown(f'<div style="background: #e0e0e0; height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 1.5rem;"><div style="background: {impl_color}; height: 100%; width: {r["implementation_quality"]}%;"></div></div>', unsafe_allow_html=True)
+                
+                col1, col2 = st.columns(2)
+                implemented = {k: v for k, v in r["advanced_features"].items() if "✓" in v["status"]}
+                missing = {k: v for k, v in r["advanced_features"].items() if "✗" in v["status"]}
+                
+                with col1:
+                    st.markdown(f"**✅ Implementiert ({len(implemented)}):**")
+                    for feature, data in implemented.items():
+                        st.markdown(f'<div style="background: #d4edda; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem;"><b>{feature}</b><br><small>Impact: +{data["impact"]} Punkte | Kategorie: {data["category"]}</small></div>', unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"**❌ Fehlend ({len(missing)}):**")
+                    for feature, data in missing.items():
+                        st.markdown(f'<div style="background: #f8d7da; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem;"><b>{feature}</b><br><small>Potenzial: +{data["impact"]} Punkte | Kategorie: {data["category"]}</small></div>', unsafe_allow_html=True)
             
             st.markdown("### 📊 Kategorien")
             for cat, data in r["category_scores"].items():
