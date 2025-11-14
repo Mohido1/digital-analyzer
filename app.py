@@ -712,7 +712,7 @@ def main():
                     st.success(f"✅ {crawl_data['total_pages']} Seiten erfolgreich analysiert!")
                     st.rerun()
     
-    # Ergebnisse anzeigen
+# Ergebnisse anzeigen
     if "crawl_data" in st.session_state:
         crawl = st.session_state.crawl_data
         
@@ -732,6 +732,23 @@ def main():
             """, unsafe_allow_html=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
+        
+        # ========== NEU: BLOCK 2 GTM ANALYSIS ==========
+        if "gtm_analysis" not in st.session_state:
+            with st.spinner("🔬 Analysiere GTM Container & DataLayer..."):
+                gtm_results = ultra_precise_gtm_analysis(crawl['combined_html'])
+                st.session_state.gtm_analysis = gtm_results
+        
+        if "gtm_analysis" in st.session_state:
+            display_gtm_analysis(st.session_state.gtm_analysis)
+        
+        # Info für nächste Blöcke
+        st.markdown("---")
+        st.info("""
+            ✅ **Block 1:** Multi-Page Crawling - Abgeschlossen  
+            ✅ **Block 2:** GTM Deep-Dive - Abgeschlossen  
+            ⏳ **Block 3:** Company Intelligence (folgt)
+        """)
         
         # Info: Weitere Blöcke folgen
        # GTM Analyse
