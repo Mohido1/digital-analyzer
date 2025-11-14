@@ -396,7 +396,7 @@ def main():
                     st.success(f"✅ {crawl_data['total_pages']} Seiten erfolgreich analysiert!")
                     st.rerun()
     
-   """
+ 
 
 def integrate_gtm_block_in_main():
     """
