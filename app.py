@@ -13,6 +13,7 @@ from datetime import datetime
 import sqlite3
 import pandas as pd
 import time
+import google.generativeai as genai
 
 try:
     import whois
