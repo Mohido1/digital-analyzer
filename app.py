@@ -646,7 +646,6 @@ def generate_gtm_recommendations(gtm_data):
 
 # ==================== ENDE BLOCK 2 ====================
 
-"""
         
         # Download Raw HTML (für Testing)
         with st.expander("🔍 Raw HTML anzeigen (für Debugging)"):
