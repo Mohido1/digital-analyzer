@@ -314,7 +314,324 @@ def crawl_multiple_pages(base_url, max_pages=7):
         
     except Exception as e:
         return None
+        
+# ==================== BLOCK 2: GTM DEEP-DIVE ====================
+# Diesen KOMPLETTEN Block nach den Helper Functions (crawl_multiple_pages) 
+# aber VOR der main() Function einfügen
 
+@st.cache_data(ttl=3600)
+def ultra_precise_gtm_analysis(html_content):
+    """Ultra-präzise GTM-Analyse"""
+    
+    analysis = {
+        "containers": [],
+        "container_details": {},
+        "datalayer": {
+            "found": False,
+            "events": [],
+            "variables": {},
+            "ecommerce": {"found": False, "type": None, "events_found": []}
+        },
+        "tags": {"total_count": 0, "by_type": {}, "details": []},
+        "triggers": {"total_count": 0, "types_found": []},
+        "variables": {"total_count": 0, "types_found": [], "custom_js": False},
+        "advanced_features": {
+            "server_side_tagging": False,
+            "consent_mode": False,
+            "cross_domain_tracking": False,
+            "user_id_tracking": False,
+            "custom_events": False
+        },
+        "implementation_quality": {
+            "score": 0,
+            "max_score": 100,
+            "grade": "F",
+            "issues": [],
+            "recommendations": []
+        }
+    }
+    
+    # Container finden
+    containers_found = re.findall(r'GTM-[A-Z0-9]{4,10}', html_content)
+    analysis["containers"] = list(set(containers_found))
+    
+    if not analysis["containers"]:
+        analysis["implementation_quality"]["issues"].append("❌ KRITISCH: Kein GTM-Container gefunden")
+        return analysis
+    
+    # DataLayer Check
+    if re.search(r'window\.dataLayer|dataLayer\s*=\s*\[', html_content):
+        analysis["datalayer"]["found"] = True
+    else:
+        analysis["implementation_quality"]["issues"].append("⚠️ WARNUNG: DataLayer nicht gefunden")
+    
+    # DataLayer Events extrahieren
+    push_patterns = [
+        r'dataLayer\.push\s*\(\s*({[^}]+})\s*\)',
+        r'dataLayer\.push\s*\(\s*({[^}]*{[^}]*}[^}]*})\s*\)'
+    ]
+    
+    all_pushes = []
+    for pattern in push_patterns:
+        pushes = re.findall(pattern, html_content, re.DOTALL)
+        all_pushes.extend(pushes)
+    
+    for push_str in all_pushes[:50]:  # Limit 50
+        try:
+            # Event-Name
+            event_match = re.search(r"['\"]event['\"]:\s*['\"]([^'\"]+)['\"]", push_str)
+            if event_match:
+                event_name = event_match.group(1)
+                if event_name and event_name not in analysis["datalayer"]["events"]:
+                    analysis["datalayer"]["events"].append(event_name)
+            
+            # Variablen
+            var_pattern = r"['\"]?([a-zA-Z_][a-zA-Z0-9_]*)['\"]?\s*:\s*(?:['\"]([^'\"]*)['\"]|(\d+\.?\d*)|({[^}]*})|(true|false))"
+            for match in re.finditer(var_pattern, push_str):
+                var_name = match.group(1)
+                var_value = match.group(2) or match.group(3) or match.group(5) or "object"
+                
+                if var_name and var_name != 'event' and var_name not in analysis["datalayer"]["variables"]:
+                    analysis["datalayer"]["variables"][var_name] = {
+                        "sample_value": str(var_value)[:100],
+                        "type": "string" if match.group(2) else "number" if match.group(3) else "boolean" if match.group(5) else "object"
+                    }
+            
+            # E-Commerce
+            ecom_indicators = ['ecommerce', 'purchase', 'add_to_cart', 'items', 'transaction']
+            for indicator in ecom_indicators:
+                if indicator in push_str:
+                    analysis["datalayer"]["ecommerce"]["found"] = True
+                    if 'items' in push_str:
+                        analysis["datalayer"]["ecommerce"]["type"] = "GA4"
+                    elif 'ecommerce' in push_str:
+                        analysis["datalayer"]["ecommerce"]["type"] = "UA Enhanced"
+                    if indicator not in analysis["datalayer"]["ecommerce"]["events_found"]:
+                        analysis["datalayer"]["ecommerce"]["events_found"].append(indicator)
+                    break
+        except:
+            continue
+    
+    # Container Details analysieren
+    for container_id in analysis["containers"]:
+        container_analysis = {
+            "id": container_id,
+            "accessible": False,
+            "size_kb": 0,
+            "tags_detected": []
+        }
+        
+        try:
+            gtm_url = f"https://www.googletagmanager.com/gtm.js?id={container_id}"
+            resp = requests.get(gtm_url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+            
+            if resp.status_code == 200:
+                container_analysis["accessible"] = True
+                gtm_content = resp.text
+                container_analysis["size_kb"] = round(len(gtm_content) / 1024, 2)
+                
+                # Tag-Signaturen
+                tag_sigs = {
+                    "Google Analytics 4": [r'google-analytics\.com/g/collect', r'measurement_id.*G-'],
+                    "Google Analytics Universal": [r'google-analytics\.com/analytics\.js', r'UA-\d+'],
+                    "Google Ads": [r'googleadservices\.com', r'AW-\d+'],
+                    "Campaign Manager 360": [r'fls\.doubleclick\.net', r'2mdn\.net'],
+                    "Meta Pixel": [r'connect\.facebook\.net', r'facebook\.com/tr'],
+                    "LinkedIn Insight": [r'snap\.licdn\.com'],
+                    "TikTok Pixel": [r'analytics\.tiktok\.com'],
+                    "Twitter Pixel": [r'static\.ads-twitter\.com'],
+                    "Hotjar": [r'static\.hotjar\.com'],
+                    "Microsoft Clarity": [r'clarity\.ms'],
+                    "HubSpot": [r'js\.hs-scripts\.com'],
+                    "Salesforce": [r'pi\.pardot\.com']
+                }
+                
+                for tag_name, patterns in tag_sigs.items():
+                    for pattern in patterns:
+                        if re.search(pattern, gtm_content, re.IGNORECASE):
+                            container_analysis["tags_detected"].append(tag_name)
+                            
+                            if tag_name not in analysis["tags"]["by_type"]:
+                                analysis["tags"]["by_type"][tag_name] = {"count": 0, "containers": []}
+                            
+                            analysis["tags"]["by_type"][tag_name]["count"] += 1
+                            analysis["tags"]["by_type"][tag_name]["containers"].append(container_id)
+                            break
+                
+                analysis["tags"]["total_count"] = len(analysis["tags"]["by_type"])
+                
+                # Triggers
+                trigger_types = {
+                    "Page View": [r'pageview', r'gtm\.js'],
+                    "Click": [r'gtm\.click', r'linkClick'],
+                    "Form Submit": [r'gtm\.formSubmit'],
+                    "Scroll Depth": [r'scroll.*depth'],
+                    "Timer": [r'gtm\.timer']
+                }
+                
+                for trigger, patterns in trigger_types.items():
+                    for pattern in patterns:
+                        if re.search(pattern, gtm_content, re.IGNORECASE):
+                            if trigger not in analysis["triggers"]["types_found"]:
+                                analysis["triggers"]["types_found"].append(trigger)
+                            break
+                
+                analysis["triggers"]["total_count"] = len(analysis["triggers"]["types_found"])
+                
+                # Advanced Features
+                if re.search(r'sgtm\.|server-container|\.run\.app', gtm_content, re.IGNORECASE):
+                    analysis["advanced_features"]["server_side_tagging"] = True
+                
+                if re.search(r'consent.*default|ad_storage|analytics_storage', gtm_content):
+                    analysis["advanced_features"]["consent_mode"] = True
+                
+                if re.search(r'linker|allowLinker', gtm_content):
+                    analysis["advanced_features"]["cross_domain_tracking"] = True
+                
+                if re.search(r'user_id|userId', gtm_content):
+                    analysis["advanced_features"]["user_id_tracking"] = True
+                
+                if re.search(r'customEvent', gtm_content):
+                    analysis["advanced_features"]["custom_events"] = True
+        
+        except:
+            pass
+        
+        analysis["container_details"][container_id] = container_analysis
+    
+    # Quality Score
+    score = 0
+    if analysis["datalayer"]["found"]: score += 10
+    if len(analysis["datalayer"]["events"]) > 0: score += 10
+    if len(analysis["datalayer"]["variables"]) >= 3: score += 10
+    if analysis["tags"]["total_count"] >= 5: score += 20
+    elif analysis["tags"]["total_count"] >= 3: score += 15
+    elif analysis["tags"]["total_count"] >= 1: score += 10
+    if analysis["triggers"]["total_count"] >= 5: score += 15
+    elif analysis["triggers"]["total_count"] >= 3: score += 10
+    if analysis["datalayer"]["ecommerce"]["found"]: score += 10
+    
+    advanced_count = sum(1 for v in analysis["advanced_features"].values() if v)
+    score += min(20, advanced_count * 4)
+    
+    analysis["implementation_quality"]["score"] = score
+    percentage = (score / 100) * 100
+    
+    if percentage >= 90: analysis["implementation_quality"]["grade"] = "A+"
+    elif percentage >= 80: analysis["implementation_quality"]["grade"] = "A"
+    elif percentage >= 70: analysis["implementation_quality"]["grade"] = "B"
+    elif percentage >= 60: analysis["implementation_quality"]["grade"] = "C"
+    elif percentage >= 50: analysis["implementation_quality"]["grade"] = "D"
+    else: analysis["implementation_quality"]["grade"] = "F"
+    
+    # Issues
+    if not analysis["datalayer"]["found"]:
+        analysis["implementation_quality"]["recommendations"].append("🔧 DataLayer implementieren: window.dataLayer = [];")
+    
+    if len(analysis["datalayer"]["events"]) == 0 and analysis["datalayer"]["found"]:
+        analysis["implementation_quality"]["issues"].append("⚠️ Keine Events im DataLayer")
+    
+    if analysis["tags"]["total_count"] < 2:
+        analysis["implementation_quality"]["recommendations"].append("🔧 Mehr Tags hinzufügen: Analytics, Ads, Remarketing")
+    
+    if not analysis["advanced_features"]["consent_mode"]:
+        analysis["implementation_quality"]["issues"].append("⚠️ Consent Mode v2 fehlt (GDPR)")
+        analysis["implementation_quality"]["recommendations"].append("🔧 Consent Mode für GDPR-Compliance")
+    
+    if not analysis["advanced_features"]["server_side_tagging"]:
+        analysis["implementation_quality"]["recommendations"].append("💡 Server-Side Tagging für bessere Datenqualität (ROI: 400%)")
+    
+    return analysis
+
+
+def display_gtm_analysis(gtm_data):
+    """Zeigt GTM-Analyse im modernen UI"""
+    
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.markdown('<h2 class="section-header">🔬 GTM Deep-Dive Analysis</h2>', unsafe_allow_html=True)
+    
+    # Container
+    if gtm_data["containers"]:
+        st.markdown(f"### 📦 GTM Container ({len(gtm_data['containers'])})")
+        for container_id in gtm_data["containers"]:
+            details = gtm_data["container_details"].get(container_id, {})
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f"**{container_id}**")
+            with col2:
+                if details.get("accessible"):
+                    st.markdown(f'<span class="badge badge-success">✓ {details.get("size_kb", 0)} KB</span>', unsafe_allow_html=True)
+    
+    # Quality Score
+    st.markdown("### 🎯 Implementation Quality")
+    quality = gtm_data["implementation_quality"]
+    score_pct = (quality["score"] / 100) * 100
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(f'<div class="metric-modern"><h2>{quality["score"]}</h2><p>von 100 Punkten</p></div>', unsafe_allow_html=True)
+    with col2:
+        st.markdown(f'<div class="metric-modern"><h2>{quality["grade"]}</h2><p>Grade</p></div>', unsafe_allow_html=True)
+    with col3:
+        color = "#10b981" if score_pct >= 70 else "#f59e0b" if score_pct >= 50 else "#ef4444"
+        st.markdown(f'<div class="progress-modern"><div class="progress-bar" style="width: {score_pct}%; background: {color};"></div></div>', unsafe_allow_html=True)
+    
+    # DataLayer
+    st.markdown("### 📊 DataLayer")
+    dl = gtm_data["datalayer"]
+    
+    if dl["found"]:
+        st.markdown(f'<span class="badge badge-success">✓ DataLayer Found</span>', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Events ({len(dl['events'])})**")
+            for evt in dl["events"][:8]:
+                st.markdown(f'<div class="tool-item">🎯 {evt}</div>', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"**Variables ({len(dl['variables'])})**")
+            for var, data in list(dl["variables"].items())[:8]:
+                st.markdown(f'<div class="tool-item">📌 {var}<br><small>{data["type"]}: {data["sample_value"][:40]}</small></div>', unsafe_allow_html=True)
+        
+        if dl["ecommerce"]["found"]:
+            st.markdown(f'<span class="badge badge-success">✓ E-Commerce: {dl["ecommerce"]["type"]}</span>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<span class="badge badge-danger">✗ DataLayer fehlt</span>', unsafe_allow_html=True)
+    
+    # Tags
+    st.markdown(f"### 🏷️ Tags ({gtm_data['tags']['total_count']})")
+    for tag, data in gtm_data["tags"]["by_type"].items():
+        st.markdown(f'<div class="tool-item"><strong>{tag}</strong> <span class="badge badge-info">{data["count"]}x</span></div>', unsafe_allow_html=True)
+    
+    # Triggers & Advanced
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"### ⚡ Triggers ({gtm_data['triggers']['total_count']})")
+        for t in gtm_data["triggers"]["types_found"]:
+            st.markdown(f'<span class="badge badge-info">{t}</span>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("### 🚀 Advanced Features")
+        for name, enabled in gtm_data["advanced_features"].items():
+            label = name.replace("_", " ").title()
+            badge = "badge-success" if enabled else "badge-warning"
+            icon = "✓" if enabled else "✗"
+            st.markdown(f'<span class="badge {badge}">{icon} {label}</span>', unsafe_allow_html=True)
+    
+    # Issues & Recommendations
+    if quality["issues"]:
+        st.markdown("### ⚠️ Issues")
+        for issue in quality["issues"]:
+            st.markdown(f'<div class="recommendation-card">{issue}</div>', unsafe_allow_html=True)
+    
+    if quality["recommendations"]:
+        st.markdown("### 💡 Recommendations")
+        for rec in quality["recommendations"]:
+            st.markdown(f'<div class="recommendation-card info">{rec}</div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
 # ==================== MAIN UI ====================
 def main():
     # DB initialisieren
@@ -417,8 +734,14 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Info: Weitere Blöcke folgen
-        st.info("📦 **Block 1 abgeschlossen!** Die weiteren Analyse-Module (GTM, Company Intel, Tools, Recommendations) folgen in den nächsten Blöcken.")
+       # GTM Analyse
+        if "gtm_analysis" not in st.session_state:
+            with st.spinner("🔬 Analysiere GTM..."):
+                gtm_results = ultra_precise_gtm_analysis(crawl['combined_html'])
+                st.session_state.gtm_analysis = gtm_results
         
+        if "gtm_analysis" in st.session_state:
+            display_gtm_analysis(st.session_state.gtm_analysis)
         # Download Raw HTML (für Testing)
         with st.expander("🔍 Raw HTML anzeigen (für Debugging)"):
             st.text_area("Combined HTML", crawl['combined_html'][:5000] + "...", height=200)
