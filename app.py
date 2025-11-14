@@ -13,7 +13,6 @@ from datetime import datetime
 import sqlite3
 import pandas as pd
 import time
-import google.generativeai as genai
 
 try:
     import whois
@@ -396,21 +395,13 @@ def main():
                     st.success(f"✅ {crawl_data['total_pages']} Seiten erfolgreich analysiert!")
                     st.rerun()
     
- 
-
-def integrate_gtm_block_in_main():
-    """
-    Diese Funktion zeigt, wie Block 2 in main() integriert wird.
-    Kopiere den Code-Teil unten in deine main() Function nach dem Crawling.
-    """
-    
     # Ergebnisse anzeigen
     if "crawl_data" in st.session_state:
         crawl = st.session_state.crawl_data
         
         st.markdown("---")
         
-        # Crawl Info (aus Block 1)
+        # Crawl Info
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.markdown(f'<h3 class="section-header">📄 Multi-Page Crawl Ergebnis</h3>', unsafe_allow_html=True)
         st.markdown(f"**{crawl['total_pages']} Seiten** analysiert:")
@@ -425,227 +416,8 @@ def integrate_gtm_block_in_main():
         
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # ========== BLOCK 2: GTM ANALYSIS ==========
-        
-        # GTM-Analyse durchführen (wenn noch nicht vorhanden)
-        if "gtm_analysis" not in st.session_state:
-            with st.spinner("🔬 Analysiere GTM Container & DataLayer..."):
-                gtm_results = ultra_precise_gtm_analysis(crawl['combined_html'])
-                st.session_state.gtm_analysis = gtm_results
-        
-        # GTM-Ergebnisse anzeigen
-        if "gtm_analysis" in st.session_state:
-            display_gtm_analysis(st.session_state.gtm_analysis)
-        
-        # Info für nächste Blöcke
-        st.markdown("---")
-        st.info("""
-            ✅ **Block 1:** Multi-Page Crawling - Abgeschlossen  
-            ✅ **Block 2:** GTM Deep-Dive - Abgeschlossen  
-            ⏳ **Block 3:** Company Intelligence (folgt als nächstes)  
-            ⏳ **Block 4:** Complete Tool Detection  
-            ⏳ **Block 5:** Concrete Recommendations
-        """)
-        
-        # Download-Optionen
-        with st.expander("📥 Export-Optionen"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("💾 GTM-Analyse als JSON"):
-                    json_data = json.dumps(st.session_state.gtm_analysis, indent=2, ensure_ascii=False)
-                    st.download_button(
-                        "Download JSON",
-                        json_data,
-                        file_name=f"gtm_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json"
-                    )
-            
-            with col2:
-                if st.button("🔄 Neue Analyse starten"):
-                    # Session State clearen
-                    for key in list(st.session_state.keys()):
-                        del st.session_state[key]
-                    st.rerun()
-
-
-# ==================== ZUSÄTZLICHE HELPER FUNCTIONS ====================
-
-def get_gtm_summary_for_report(gtm_data):
-    """
-    Erstellt eine kompakte Zusammenfassung für Reports/Recommendations
-    """
-    summary = {
-        "has_gtm": len(gtm_data["containers"]) > 0,
-        "container_count": len(gtm_data["containers"]),
-        "implementation_grade": gtm_data["implementation_quality"]["grade"],
-        "quality_score": gtm_data["implementation_quality"]["score"],
-        "critical_issues": len([i for i in gtm_data["implementation_quality"]["issues"] if "KRITISCH" in i]),
-        "has_datalayer": gtm_data["datalayer"]["found"],
-        "event_count": len(gtm_data["datalayer"]["events"]),
-        "tag_count": gtm_data["tags"]["total_count"],
-        "has_ecommerce": gtm_data["datalayer"]["ecommerce"]["found"],
-        "has_server_side": gtm_data["advanced_features"]["server_side_tagging"],
-        "has_consent_mode": gtm_data["advanced_features"]["consent_mode"],
-        "main_issues": gtm_data["implementation_quality"]["issues"][:3],
-        "top_recommendations": gtm_data["implementation_quality"]["recommendations"][:3]
-    }
-    
-    return summary
-
-
-def generate_gtm_recommendations(gtm_data):
-    """
-    Generiert konkrete, umsetzbare GTM-Empfehlungen basierend auf der Analyse
-    """
-    recommendations = []
-    
-    quality_score = gtm_data["implementation_quality"]["score"]
-    
-    # Kritische Empfehlungen
-    if not gtm_data["containers"]:
-        recommendations.append({
-            "priority": "CRITICAL",
-            "category": "Setup",
-            "title": "GTM Container fehlt komplett",
-            "issue": "Keine Tag-Management-Lösung implementiert",
-            "action": "Google Tag Manager einrichten",
-            "steps": [
-                "1. GTM-Account erstellen auf tagmanager.google.com",
-                "2. Container erstellen für Website",
-                "3. GTM-Code in <head> und <body> einfügen",
-                "4. Mindestens 3 Tags einrichten: GA4, Google Ads, Meta Pixel"
-            ],
-            "impact": "Ermöglicht zentrale Verwaltung aller Marketing-Tags",
-            "effort": "2-3 Tage",
-            "cost": "€0 (kostenlos)",
-            "roi": "Unverzichtbar für professionelles Tracking"
-        })
-    
-    if not gtm_data["datalayer"]["found"]:
-        recommendations.append({
-            "priority": "CRITICAL",
-            "category": "Implementation",
-            "title": "DataLayer fehlt",
-            "issue": "Keine strukturierte Datenübergabe an Tags",
-            "action": "DataLayer implementieren",
-            "steps": [
-                "1. Vor GTM-Code einfügen: window.dataLayer = window.dataLayer || [];",
-                "2. Key-Events als dataLayer.push() implementieren",
-                "3. E-Commerce-Daten strukturiert übergeben",
-                "4. User-Properties bei Login übergeben"
-            ],
-            "impact": "30-50% genauere Tracking-Daten",
-            "effort": "3-5 Tage (Developer erforderlich)",
-            "cost": "€2.000-4.000",
-            "roi": "400%+ durch bessere Daten-Qualität"
-        })
-    
-    elif len(gtm_data["datalayer"]["events"]) < 3:
-        recommendations.append({
-            "priority": "HIGH",
-            "category": "Events",
-            "title": "Zu wenige Events im DataLayer",
-            "issue": f"Nur {len(gtm_data['datalayer']['events'])} Events - kritische Events fehlen",
-            "action": "Event-Tracking erweitern",
-            "steps": [
-                "1. Purchase/Conversion-Events implementieren",
-                "2. Add-to-Cart / Begin-Checkout Events",
-                "3. Form-Submit Events",
-                "4. Click-Events auf CTAs"
-            ],
-            "impact": "Conversion-Attribution & Funnel-Analyse möglich",
-            "effort": "1-2 Wochen",
-            "cost": "€3.000-5.000",
-            "roi": "250%+ durch Funnel-Optimierung"
-        })
-    
-    if gtm_data["tags"]["total_count"] < 3:
-        recommendations.append({
-            "priority": "HIGH",
-            "category": "Tags",
-            "title": "GTM wird kaum genutzt",
-            "issue": f"Nur {gtm_data['tags']['total_count']} Tags - Potenzial ungenutzt",
-            "action": "Essential Tags hinzufügen",
-            "steps": [
-                "1. Google Analytics 4 Tag (falls nicht vorhanden)",
-                "2. Google Ads Conversion Tag",
-                "3. Meta Pixel / CAPI",
-                "4. LinkedIn Insight Tag (B2B)",
-                "5. Remarketing Tags (Google Ads, Meta)"
-            ],
-            "impact": "Multi-Channel Attribution & Remarketing",
-            "effort": "2-3 Tage",
-            "cost": "€1.000-2.000",
-            "roi": "300%+ durch Remarketing"
-        })
-    
-    if not gtm_data["advanced_features"]["consent_mode"]:
-        recommendations.append({
-            "priority": "CRITICAL",
-            "category": "Compliance",
-            "title": "Consent Mode v2 fehlt",
-            "issue": "GDPR-Verstöße möglich seit März 2024",
-            "action": "Google Consent Mode v2 implementieren",
-            "steps": [
-                "1. Consent Management Platform integrieren (OneTrust/Cookiebot)",
-                "2. Consent Mode default States setzen",
-                "3. Consent Mode update bei User-Aktion",
-                "4. Alle Tags auf Consent Mode umstellen"
-            ],
-            "impact": "GDPR-Konformität + bessere Datenqualität",
-            "effort": "1-2 Wochen",
-            "cost": "€3.000-6.000",
-            "roi": "Risk Mitigation (Bußgelder vermeiden)"
-        })
-    
-    if not gtm_data["advanced_features"]["server_side_tagging"]:
-        recommendations.append({
-            "priority": "MEDIUM",
-            "category": "Optimization",
-            "title": "Server-Side Tagging nicht implementiert",
-            "issue": "20-40% Datenverlust durch Browser-Blocker & iOS-Tracking-Prevention",
-            "action": "GTM Server-Side Container einrichten",
-            "steps": [
-                "1. Server-Container in GTM erstellen",
-                "2. Cloud Run / App Engine Server aufsetzen",
-                "3. Web-Container auf Server-Container umleiten",
-                "4. GA4, Meta CAPI, LinkedIn CAPI integrieren"
-            ],
-            "impact": "30-40% mehr verwertbare Tracking-Daten",
-            "effort": "2-3 Wochen",
-            "cost": "€8.000-12.000 Setup + €100-300/Monat Server",
-            "roi": "400%+ bei signifikantem Traffic"
-        })
-    
-    if gtm_data["datalayer"]["ecommerce"]["found"] and not gtm_data["datalayer"]["ecommerce"]["type"]:
-        recommendations.append({
-            "priority": "MEDIUM",
-            "category": "E-Commerce",
-            "title": "E-Commerce Tracking unklar",
-            "issue": "E-Commerce-Daten gefunden, aber Format nicht eindeutig",
-            "action": "E-Commerce Tracking auf GA4 migrieren",
-            "steps": [
-                "1. Aktuelles Format analysieren (UA vs GA4)",
-                "2. Auf GA4 E-Commerce Format migrieren",
-                "3. Purchase, Add-to-Cart, Checkout-Events",
-                "4. Item-Level Daten korrekt übergeben"
-            ],
-            "impact": "Produkt-Performance-Analyse & ROI-Tracking",
-            "effort": "1 Woche",
-            "cost": "€2.000-4.000",
-            "roi": "200%+ durch Produkt-Optimierung"
-        })
-    
-    # Sortiere nach Priorität
-    priority_order = {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4}
-    recommendations.sort(key=lambda x: priority_order.get(x["priority"], 5))
-    
-    return recommendations
-
-
-# ==================== ENDE BLOCK 2 ====================
-
+        # Info: Weitere Blöcke folgen
+        st.info("📦 **Block 1 abgeschlossen!** Die weiteren Analyse-Module (GTM, Company Intel, Tools, Recommendations) folgen in den nächsten Blöcken.")
         
         # Download Raw HTML (für Testing)
         with st.expander("🔍 Raw HTML anzeigen (für Debugging)"):
